@@ -127,6 +127,9 @@ export function activateTab(id: number): void {
   if (current && view && current.id !== id) {
     current.state = view.state;
     current.scrollTop = view.scrollDOM.scrollTop;
+    // The throttled dirty check only looks at the active tab, so an edit made within the throttle
+    // window before switching away would otherwise leave this tab's dirty dot stale.
+    recomputeDirty(current);
   }
   if (current?.id === id) return;
   tabsStore.activeId = id;

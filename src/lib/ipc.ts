@@ -62,8 +62,26 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
   }
 }
 
+/**
+ * Largest request body sent through IPC. WebView2 kills the page (unsaved edits are lost) when a
+ * single fetch body gets past roughly 110 MB, with no error to catch: measured with 100 MB OK and
+ * 120 MB crashing, for the Tauri IPC and for a plain fetch alike. Refuse early with a normal error.
+ */
+export const MAX_RAW_REQUEST_BYTES = 96 * 1024 * 1024;
+
+export function checkRawRequestSize(cmd: string, bytes: number): void {
+  if (bytes <= MAX_RAW_REQUEST_BYTES) return;
+  const mb = (n: number) => (n / 1048576).toFixed(0);
+  const err: AppError = {
+    kind: "invalidArg",
+    message: `${cmd}: ${mb(bytes)} MB is over the ${mb(MAX_RAW_REQUEST_BYTES)} MB limit for one request to the backend (WebView2 would crash)`,
+  };
+  throw err;
+}
+
 async function callRaw<T>(cmd: string, body: Uint8Array, headers: Record<string, string>): Promise<T> {
   ensureTauri();
+  checkRawRequestSize(cmd, body.byteLength);
   try {
     return await invoke<T>(cmd, body, { headers });
   } catch (e) {

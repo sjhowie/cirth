@@ -4,7 +4,7 @@ const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 
-import { buildWriteHeaders, isAppError, parseReadFileResponse, readFile, toAppError, writeFile } from "./ipc";
+import { buildWriteHeaders, checkRawRequestSize, isAppError, MAX_RAW_REQUEST_BYTES, parseReadFileResponse, readFile, toAppError, writeFile } from "./ipc";
 
 function buildResponse(meta: object, text: string): ArrayBuffer {
   const enc = new TextEncoder();
@@ -103,5 +103,23 @@ describe("AppError guard", () => {
     expect(isAppError("x")).toBe(false);
     expect(isAppError(null)).toBe(false);
     expect(toAppError(new Error("e")).message).toBe("e");
+  });
+});
+
+describe("raw request size limit", () => {
+  it("allows bodies up to the limit", () => {
+    expect(() => checkRawRequestSize("write_file", MAX_RAW_REQUEST_BYTES)).not.toThrow();
+  });
+
+  it("rejects larger bodies with an invalidArg AppError instead of crashing the webview", () => {
+    let thrown: unknown;
+    try {
+      checkRawRequestSize("format_json", MAX_RAW_REQUEST_BYTES + 1);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(isAppError(thrown)).toBe(true);
+    expect(thrown).toMatchObject({ kind: "invalidArg" });
+    expect((thrown as { message: string }).message).toMatch(/format_json.*limit/);
   });
 });

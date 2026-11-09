@@ -1,6 +1,7 @@
 <script lang="ts">
   import { status } from "$lib/editorHost.svelte";
   import { listLanguageNames } from "$lib/editor/languages";
+  import { encodingChoices, encodingLabel } from "$lib/encodings";
   import { setTabEncoding, setTabEol, setTabLanguage } from "$lib/files";
   import { reportError } from "$lib/notifications.svelte";
   import { chordHint } from "$lib/keys.svelte";
@@ -15,20 +16,8 @@
   const tab = $derived(tabsStore.active);
   const languageNames = listLanguageNames();
 
-  const encodings: Record<string, { encoding: string; bom: boolean }> = {
-    "UTF-8": { encoding: "utf-8", bom: false },
-    "UTF-8 with BOM": { encoding: "utf-8", bom: true },
-    "UTF-16 LE": { encoding: "utf-16le", bom: false },
-    "UTF-16 BE": { encoding: "utf-16be", bom: false },
-    "Windows-1252": { encoding: "windows-1252", bom: false },
-  };
-
-  const encodingLabel = $derived.by(() => {
-    if (!tab) return "";
-    const match = Object.entries(encodings).find(([, v]) => v.encoding === tab.encoding && v.bom === tab.bom);
-    if (match) return match[0];
-    return tab.encoding.toUpperCase() + (tab.bom ? " with BOM" : "");
-  });
+  const encodings = encodingChoices;
+  const currentEncoding = $derived(tab ? encodingLabel(tab.encoding, tab.bom) : "");
 
   function toggle(which: Exclude<Which, null>, e: MouseEvent): void {
     e.stopPropagation();
@@ -71,9 +60,9 @@
         {/if}
       </span>
       <span class="anchor">
-        <button class="item" title="Save with encoding… (applies on next save)" onclick={(e) => toggle("encoding", e)}>{encodingLabel}</button>
+        <button class="item" title="Save with encoding… (applies on next save)" onclick={(e) => toggle("encoding", e)}>{currentEncoding}</button>
         {#if open === "encoding"}
-          <Picker items={Object.keys(encodings)} current={encodingLabel} onpick={pickEncoding} onclose={() => (open = null)} />
+          <Picker items={Object.keys(encodings)} current={currentEncoding} onpick={pickEncoding} onclose={() => (open = null)} />
         {/if}
       </span>
       <span class="anchor">
