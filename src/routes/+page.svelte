@@ -1,156 +1,175 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { onMount, untrack } from "svelte";
+  import { registerAppCommands } from "$lib/appCommands";
+  import ChangedBanner from "$lib/components/ChangedBanner.svelte";
+  import Editor from "$lib/components/Editor.svelte";
+  import Explorer from "$lib/components/Explorer.svelte";
+  import MenuBar from "$lib/components/MenuBar.svelte";
+  import Modal from "$lib/components/Modal.svelte";
+  import SettingsPanel from "$lib/components/SettingsPanel.svelte";
+  import Sidebar from "$lib/components/Sidebar.svelte";
+  import StatusBar from "$lib/components/StatusBar.svelte";
+  import TabBar from "$lib/components/TabBar.svelte";
+  import Toasts from "$lib/components/Toasts.svelte";
+  import { reconfigureAllTabs } from "$lib/editorHost.svelte";
+  import { confirmExit, newTab, openStartupPaths } from "$lib/files";
+  import { isTauri } from "$lib/ipc";
+  import { installKeyHandler } from "$lib/keys.svelte";
+  import { layout, registerSidebarPanel } from "$lib/layout.svelte";
+  import { reportError } from "$lib/notifications.svelte";
+  import { initSettings, isDark, settings, themeState } from "$lib/settings.svelte";
+  import { tabsStore } from "$lib/tabs.svelte";
+  import { startWatching, syncWatchedPaths } from "$lib/watch.svelte";
 
-  let name = $state("");
-  let greetMsg = $state("");
+  registerSidebarPanel({ id: "explorer", title: "Explorer", component: Explorer });
 
-  async function greet(event: Event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
-  }
+  // Theme: chrome CSS variables + every tab's CodeMirror theme/font/indent/wrap.
+  $effect(() => {
+    const dark = isDark();
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    // Touch every setting the editor depends on so this effect re-runs when any changes.
+    void [settings.fontFamily, settings.fontSize, settings.indent, settings.wordWrap];
+    untrack(reconfigureAllTabs);
+  });
+
+  // Keep the backend watch set in sync with the open folder and file paths.
+  $effect(() => {
+    if (isTauri()) syncWatchedPaths();
+  });
+
+  // Window title.
+  $effect(() => {
+    const tab = tabsStore.active;
+    const title = tab ? `${tab.dirty ? "● " : ""}${tab.title} - SimpleEditor` : "SimpleEditor";
+    document.title = title;
+    if (isTauri()) {
+      import("@tauri-apps/api/window")
+        .then(({ getCurrentWindow }) => getCurrentWindow().setTitle(title))
+        .catch((e) => console.error("Set window title", e));
+    }
+  });
+
+  onMount(() => {
+    registerAppCommands();
+    const uninstallKeys = installKeyHandler();
+
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    themeState.systemDark = media.matches;
+    const onMedia = (e: MediaQueryListEvent) => (themeState.systemDark = e.matches);
+    media.addEventListener("change", onMedia);
+
+    let unlistenClose: (() => void) | null = null;
+
+    (async () => {
+      await initSettings();
+      if (isTauri()) {
+        try {
+          const { getCurrentWindow } = await import("@tauri-apps/api/window");
+          const win = getCurrentWindow();
+          let closing = false;
+          unlistenClose = await win.onCloseRequested(async (event) => {
+            if (closing) return;
+            closing = true;
+            try {
+              if (!(await confirmExit())) {
+                event.preventDefault();
+                return;
+              }
+              event.preventDefault();
+              await win.destroy();
+            } catch (e) {
+              reportError("Close window", e);
+              event.preventDefault();
+            } finally {
+              closing = false;
+            }
+          });
+        } catch (e) {
+          reportError("Register close handler", e);
+        }
+        await startWatching();
+        await openStartupPaths();
+      }
+      if (tabsStore.tabs.length === 0) await newTab();
+    })().catch((e) => reportError("Startup", e));
+
+    return () => {
+      uninstallKeys();
+      media.removeEventListener("change", onMedia);
+      unlistenClose?.();
+    };
+  });
 </script>
 
-<main class="container">
-  <h1>Welcome to Tauri + Svelte</h1>
-
-  <div class="row">
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-    </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
+<div class="app">
+  <MenuBar />
+  <div class="main">
+    {#if layout.sidebarVisible}
+      <Sidebar />
+    {/if}
+    <div class="center">
+      <TabBar />
+      <div class="area">
+        <!-- Editor pane stays mounted (hidden, never destroyed) so the single EditorView survives preview-only mode. -->
+        <div class="pane editor-pane" class:hidden={layout.previewMode === "only"}>
+          <ChangedBanner />
+          <Editor />
+        </div>
+        <!-- Preview slot: layout.previewComponent, shown when layout.previewMode is "side" or "only". -->
+        {#if layout.previewMode !== "off" && layout.previewComponent}
+          {@const Preview = layout.previewComponent}
+          <div class="pane preview-pane" class:only={layout.previewMode === "only"} id="preview-slot">
+            <Preview />
+          </div>
+        {/if}
+      </div>
+    </div>
   </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
+  <StatusBar />
+</div>
 
-  <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet</button>
-  </form>
-  <p>{greetMsg}</p>
-</main>
+<Toasts />
+<Modal />
+<SettingsPanel />
+{#each layout.overlays as Overlay, i (i)}
+  <Overlay />
+{/each}
 
 <style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
-
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
   }
-
-  a:hover {
-    color: #24c8db;
+  .main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
   }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
+  .center {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
   }
-  button:active {
-    background-color: #0f0f0f69;
+  .area {
+    display: flex;
+    flex: 1;
+    min-height: 0;
   }
-}
-
+  .pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+  }
+  .pane.hidden {
+    display: none;
+  }
+  .preview-pane {
+    border-left: 1px solid var(--border);
+    overflow: auto;
+    background: var(--bg-editor);
+  }
 </style>
