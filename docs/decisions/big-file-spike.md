@@ -1,6 +1,8 @@
 # Big-file spike: CodeMirror 6 light mode at 150 MB
 
-Historical decision record (measured 2026-11-09). Code: `src/lib/editor/largeFile.ts`, `src/routes/spike/+page.svelte`.
+Historical decision record (measured 2026-11-09). Code: `src/lib/editor/largeFile.ts`.
+
+The one-off measurement page (`src/routes/spike/+page.svelte`) was removed after the decision and lives in git history (commits `78f5c4c` / `0e95022`).
 
 ## Verdict
 

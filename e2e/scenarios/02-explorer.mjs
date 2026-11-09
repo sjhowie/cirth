@@ -64,7 +64,8 @@ export async function run(t) {
   await page.keyboard.type('newdir');
   await page.keyboard.press('Enter');
   await waitFor(() => existsSync(join(root, 'src', 'newdir')), { label: 'newdir on disk' });
-  t.ok(await row(page, 'newdir').count(), 'new folder appears in the tree');
+  // The release build creates the dir before the tree re-lists, so wait for the row (fails if it never shows).
+  t.ok(await waitFor(async () => (await row(page, 'newdir').count()) > 0, { label: 'newdir row' }).then(() => true, () => false), 'new folder appears in the tree');
 
   // New File on a file row = sibling
   await ctx(page, 'b.txt', 'New File');

@@ -8,7 +8,9 @@ import http from 'node:http';
 import { chromium } from 'playwright-core';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-export const EXE = join(ROOT, 'src-tauri', 'target', 'debug', 'simple-editor.exe');
+/** SE_EXE overrides the exe (e.g. an installed release build); the release build bundles the frontend, so no Vite then. */
+export const USE_CUSTOM_EXE = !!process.env.SE_EXE;
+export const EXE = process.env.SE_EXE ?? join(ROOT, 'src-tauri', 'target', 'debug', 'simple-editor.exe');
 export const CDP_PORT = 9222;
 export const VITE_PORT = 1420;
 export const SETTINGS_FILE = join(process.env.APPDATA ?? '', 'com.simpleeditor.app', 'settings.json');
@@ -183,7 +185,7 @@ export async function launchApp({ args = [] } = {}) {
   try {
     await waitFor(async () => (await httpGet(`http://127.0.0.1:${CDP_PORT}/json/version`)).status === 200, { timeout: 30000, interval: 200, label: 'CDP endpoint' });
     app.browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
-    app.page = await waitFor(() => app.browser.contexts()[0]?.pages().find((p) => p.url().includes(`:${VITE_PORT}`)), { timeout: 20000, label: 'app page' });
+    app.page = await waitFor(() => app.browser.contexts()[0]?.pages().find((p) => (USE_CUSTOM_EXE ? /tauri\.localhost/.test(p.url()) : p.url().includes(`:${VITE_PORT}`))), { timeout: 20000, label: 'app page' });
     app.page.on('console', (m) => {
       if (m.type() === 'error') app.consoleErrors.push(m.text());
     });
