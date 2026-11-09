@@ -1,0 +1,100 @@
+# IPC contract (Rust ⇄ frontend)
+
+Single source of truth for every Tauri command and event. Rust lives in `src-tauri/src/`, the
+frontend wrapper in `src/lib/ipc.ts`. Change this file in the same commit as any signature change.
+
+## Conventions
+- Command names are snake_case; JSON args are camelCase (Tauri 2 default).
+- **Large text never crosses IPC as a JSON string.** Commands marked *raw* take/return bytes:
+  - Raw request: frontend calls `invoke(cmd, uint8Array, { headers })`; Rust takes
+    `request: tauri::ipc::Request` and reads `InvokeBody::Raw` + headers.
+  - Raw response: Rust returns `tauri::ipc::Response::new(Vec<u8>)`; frontend receives `ArrayBuffer`.
+  - Header values are ASCII; paths go in headers `encodeURIComponent`-encoded and are
+    percent-decoded in Rust.
+- Errors: every command returns `Result<_, AppError>`; `AppError` serializes to
+  `{ "kind": string, "message": string, "line"?: number, "col"?: number }`.
+  `kind` ∈ `io | encoding | parse | notFound | invalidArg | cancelled`. `line`/`col` are 1-based.
+
+## Files
+| Command | Kind | Input | Output |
+|---|---|---|---|
+| `read_file` | raw response | `{ path }` | `[u32 LE metaLen][meta JSON, UTF-8][text, UTF-8]` |
+| `write_file` | raw request | body = text as UTF-8 with `\n` line breaks; headers `x-path`, `x-encoding`, `x-bom` (`1`/`0`), `x-eol` (`lf`/`crlf`) | `{ size: number }` |
+
+`meta` = `{ encoding: string, bom: boolean, eol: "lf" | "crlf", size: number }`
+- `encoding`: `utf-8`, `utf-16le`, `utf-16be`, or an `encoding_rs` label (e.g. `windows-1252`).
+  Detection: BOM first, else valid UTF-8 → `utf-8`, else `chardetng`.
+- `eol`: style of the first line break; `lf` if none. Text is returned as-is (CodeMirror normalizes).
+- `write_file` converts `\n` to the requested EOL, encodes, prepends a BOM if `x-bom=1`, and writes
+  atomically (temp file in the same dir, then rename). Characters the target encoding cannot
+  represent → `AppError{kind:"encoding"}`; never write numeric character references.
+
+## Formatting
+| Command | Kind | Input | Output |
+|---|---|---|---|
+| `format_json` | raw request + raw response | body = text; headers `x-mode` (`pretty`/`minify`), `x-indent` (`2`/`4`/`tab`) | text (UTF-8) |
+| `format_xml` | raw request + raw response | same as `format_json` | text (UTF-8) |
+
+Invalid input → `AppError{kind:"parse", message, line, col}`; output is never partial.
+
+## Folder tree and file operations
+| Command | Input | Output |
+|---|---|---|
+| `list_dir` | `{ path }` | `[{ name, path, isDir }]` — folders first, then case-insensitive name; skips `.git` |
+| `list_files` | `{ root }` | `{ files: string[], truncated: boolean }` — root-relative, `/`-separated, honours `.gitignore`, cap 50 000 |
+| `create_file` | `{ path }` | `()` — fails if it exists |
+| `create_dir` | `{ path }` | `()` |
+| `rename_path` | `{ from, to }` | `()` — fails if `to` exists |
+| `trash_path` | `{ path }` | `()` — OS recycle bin (`trash` crate) |
+| `get_startup_paths` | `{}` | `string[]` — absolute paths passed on the command line |
+
+## Watching
+| Command | Input | Output |
+|---|---|---|
+| `watch_paths` | `{ paths: string[] }` | `()` — replaces the watched set (open folder recursive, open files non-recursive) |
+
+Event `fs://changed` payload `{ paths: string[] }` (absolute), debounced 200 ms. The frontend
+decides what changed by re-reading (`list_dir` / `read_file`).
+
+## Folder search / replace
+| Command | Input | Output |
+|---|---|---|
+| `search_folder` | `{ searchId, root, query, regex, caseSensitive, wholeWord, include, exclude }` | `()` — results stream as events |
+| `cancel_search` | `{ searchId }` | `()` |
+| `replace_in_folder` | `{ root, query, replacement, regex, caseSensitive, wholeWord, paths: string[] }` | `{ filesChanged, replacements }` |
+
+- `include` / `exclude`: comma-separated globs (may be empty). Honours `.gitignore`; skips binary files.
+- Event `search://result` `{ searchId, path, items: [{ line, col, preview, matchLen }] }`, one
+  event per file with matches (`col` 1-based char column of the match within `preview`; `preview`
+  is the trimmed line, max 300 chars, windowed around the match).
+- Event `search://done` `{ searchId, files, matches, truncated, cancelled }`; cap 10 000 matches.
+- `replace_in_folder` touches only `paths`, re-reads each with `read_file` semantics and writes back
+  with its original encoding/BOM/EOL. With `regex`, `$1` etc. expand in `replacement`.
+
+## Behaviour notes (as implemented)
+- Missing headers: `x-encoding` → `utf-8`, `x-bom` → `0`, `x-eol` → `lf`, `x-mode` → `pretty`,
+  `x-indent` → `2`. Bad values → `invalidArg`. A leading BOM in format input is dropped.
+- Error positions: unterminated JSON string → its opening quote; unclosed XML element → its start
+  tag; mismatched end tag → that tag.
+- Encoding detection sees the first 1 MiB; UTF-16 without a BOM is not detected.
+- XML: whitespace-only content of an otherwise empty element is dropped (`<a> </a>` → `<a></a>`);
+  CDATA counts as text for mixed-content detection; no DTD/entity validation.
+- Search: empty query → `invalidArg`; bad regex or missing root fails synchronously; regexes that
+  can only match across a newline → `parse`; legacy-encoded (non-UTF-8/16) files are searched as raw
+  bytes, so non-ASCII queries won't match them; `include` is a filter that never un-ignores
+  `.gitignore`d files.
+- `replace_in_folder`: `root` unused; stops at the first file error (earlier files stay written);
+  keeps each file's EOLs.
+- `watch_paths`: unwatchable paths are logged and skipped. `cancelled` errors are never returned;
+  cancellation shows in `search://done`.
+
+## Settings
+| Command | Input | Output |
+|---|---|---|
+| `load_settings` | `{}` | `Settings` (defaults if file missing or invalid; invalid file is logged, not overwritten) |
+| `save_settings` | `{ settings }` | `()` |
+
+`Settings` = `{ theme: "system"|"light"|"dark", fontFamily: string, fontSize: number,
+indent: "2"|"4"|"tab", largeFileThresholdMb: number, wordWrap: boolean }`
+Defaults: `system`, `"Cascadia Code, Consolas, Menlo, monospace"`, `14`, `"2"`, `10`, `false` (10 MB per `docs/decisions/big-file-spike.md`).
+Stored as `settings.json` in the Tauri app config dir.
