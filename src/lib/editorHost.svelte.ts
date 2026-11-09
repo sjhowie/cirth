@@ -6,8 +6,8 @@
  * Extension point: `onEditorUpdate(fn)` lets other features (e.g. markdown preview) observe
  * every ViewUpdate of the active editor; `getActiveText()` reads the active document.
  */
-import { EditorState, Text, type Extension, type TransactionSpec } from "@codemirror/state";
-import type { EditorView, ViewUpdate } from "@codemirror/view";
+import { EditorSelection, EditorState, Text, type Extension, type TransactionSpec } from "@codemirror/state";
+import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { buildExtensions, languageC, settingsEffects } from "./editor/config";
 import { isDocDirty } from "./dirty";
 import { isDark, settings } from "./settings.svelte";
@@ -161,6 +161,26 @@ export function dispatchToTab(tab: Tab, spec: TransactionSpec): void {
 
 export function setTabLanguageExtension(tab: Tab, lang: Extension): void {
   dispatchToTab(tab, { effects: languageC.reconfigure(lang) });
+}
+
+/**
+ * Selects `matchLen` chars at 1-based `line`/`col` in the active document, scrolls the selection
+ * into the vertical centre and focuses the editor. Line/col are clamped to the document.
+ * Returns false when no editor is attached.
+ */
+export function revealPosition(line: number, col: number, matchLen: number): boolean {
+  if (!view) return false;
+  const doc = view.state.doc;
+  const ln = doc.line(Math.min(Math.max(1, line), doc.lines));
+  const from = Math.min(ln.from + Math.max(0, col - 1), ln.to);
+  const to = Math.min(from + Math.max(0, matchLen), ln.to);
+  view.dispatch({
+    selection: EditorSelection.single(from, to),
+    effects: EditorView.scrollIntoView(from, { y: "center" }),
+    userEvent: "select",
+  });
+  view.focus();
+  return true;
 }
 
 /** Re-applies theme/indent/wrap/font to every tab, including inactive ones. */

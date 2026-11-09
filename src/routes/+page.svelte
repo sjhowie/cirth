@@ -16,10 +16,12 @@
   import { isTauri } from "$lib/ipc";
   import { installKeyHandler } from "$lib/keys.svelte";
   import { layout, registerSidebarPanel } from "$lib/layout.svelte";
+  import { registerMarkdownPreview } from "$lib/markdown/preview.svelte";
   import { reportError } from "$lib/notifications.svelte";
   import { initSettings, isDark, settings, themeState } from "$lib/settings.svelte";
   import { tabsStore } from "$lib/tabs.svelte";
   import { startWatching, syncWatchedPaths } from "$lib/watch.svelte";
+  import { registerPaletteAndSearch } from "$lib/palette/register";
 
   registerSidebarPanel({ id: "explorer", title: "Explorer", component: Explorer });
 
@@ -51,6 +53,8 @@
 
   onMount(() => {
     registerAppCommands();
+    registerPaletteAndSearch();
+    registerMarkdownPreview();
     const uninstallKeys = installKeyHandler();
 
     const media = window.matchMedia("(prefers-color-scheme: dark)");

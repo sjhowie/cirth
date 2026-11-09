@@ -1,0 +1,245 @@
+/* Markdown preview: GitHub-like, driven by the app's CSS variables so light and dark both work. */
+
+.md-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg-editor);
+  color: var(--fg);
+
+  --md-code-bg: rgba(128, 128, 128, 0.14);
+  --md-quote: var(--fg-dim);
+  --md-table-alt: rgba(128, 128, 128, 0.08);
+  --md-code-font: ui-monospace, "Cascadia Code", Consolas, "SFMono-Regular", Menlo, monospace;
+
+  /* classHighlighter token colours, light theme */
+  --tok-keyword: #cf222e;
+  --tok-string: #0a3069;
+  --tok-number: #0550ae;
+  --tok-comment: #6e7781;
+  --tok-name: #8250df;
+  --tok-type: #953800;
+  --tok-operator: #cf222e;
+  --tok-meta: #6e7781;
+  --tok-invalid: #cf222e;
+}
+
+:root[data-theme="dark"] .md-scroll {
+  --tok-keyword: #c678dd;
+  --tok-string: #98c379;
+  --tok-number: #d19a66;
+  --tok-comment: #7f8794;
+  --tok-name: #61afef;
+  --tok-type: #e5c07b;
+  --tok-operator: #56b6c2;
+  --tok-meta: #7f8794;
+  --tok-invalid: #f47067;
+}
+
+.md-preview {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px 32px 64px;
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+.md-preview > :first-child {
+  margin-top: 0;
+}
+
+.md-preview h1,
+.md-preview h2,
+.md-preview h3,
+.md-preview h4,
+.md-preview h5,
+.md-preview h6 {
+  margin: 1.5em 0 0.6em;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.md-preview h1 {
+  font-size: 2em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border);
+}
+.md-preview h2 {
+  font-size: 1.5em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border);
+}
+.md-preview h3 {
+  font-size: 1.25em;
+}
+.md-preview h4 {
+  font-size: 1em;
+}
+.md-preview h5 {
+  font-size: 0.875em;
+}
+.md-preview h6 {
+  font-size: 0.85em;
+  color: var(--fg-dim);
+}
+
+.md-preview p,
+.md-preview ul,
+.md-preview ol,
+.md-preview blockquote,
+.md-preview table,
+.md-preview pre,
+.md-preview hr {
+  margin: 0 0 1em;
+}
+
+.md-preview ul,
+.md-preview ol {
+  padding-left: 2em;
+}
+.md-preview li + li {
+  margin-top: 0.25em;
+}
+.md-preview li > ul,
+.md-preview li > ol {
+  margin-bottom: 0;
+}
+
+.md-preview a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.md-preview a:hover {
+  text-decoration: underline;
+}
+
+.md-preview blockquote {
+  padding: 0 1em;
+  color: var(--md-quote);
+  border-left: 0.25em solid var(--border);
+}
+.md-preview blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.md-preview hr {
+  height: 0.2em;
+  padding: 0;
+  border: 0;
+  background: var(--border);
+}
+
+.md-preview img {
+  max-width: 100%;
+  height: auto;
+}
+
+.md-preview table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow: auto;
+  border-collapse: collapse;
+}
+.md-preview th,
+.md-preview td {
+  padding: 6px 13px;
+  border: 1px solid var(--border);
+}
+.md-preview th {
+  font-weight: 600;
+}
+.md-preview tr:nth-child(2n) {
+  background: var(--md-table-alt);
+}
+
+.md-preview code,
+.md-preview pre {
+  font-family: var(--md-code-font);
+  font-size: 0.875em;
+}
+.md-preview code {
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  background: var(--md-code-bg);
+}
+.md-preview pre {
+  padding: 14px 16px;
+  overflow: auto;
+  line-height: 1.45;
+  border-radius: 6px;
+  background: var(--md-code-bg);
+}
+.md-preview pre > code {
+  padding: 0;
+  background: none;
+  font-size: 1em;
+  white-space: pre;
+}
+
+.md-preview .tok-keyword,
+.md-preview .tok-modifier,
+.md-preview .tok-controlKeyword,
+.md-preview .tok-definitionKeyword,
+.md-preview .tok-moduleKeyword,
+.md-preview .tok-operatorKeyword {
+  color: var(--tok-keyword);
+}
+.md-preview .tok-string,
+.md-preview .tok-string2,
+.md-preview .tok-regexp,
+.md-preview .tok-escape {
+  color: var(--tok-string);
+}
+.md-preview .tok-number,
+.md-preview .tok-bool,
+.md-preview .tok-atom,
+.md-preview .tok-literal,
+.md-preview .tok-integer,
+.md-preview .tok-float {
+  color: var(--tok-number);
+}
+.md-preview .tok-comment,
+.md-preview .tok-lineComment,
+.md-preview .tok-blockComment,
+.md-preview .tok-docComment {
+  color: var(--tok-comment);
+  font-style: italic;
+}
+.md-preview .tok-variableName,
+.md-preview .tok-propertyName,
+.md-preview .tok-attributeName,
+.md-preview .tok-labelName,
+.md-preview .tok-macroName {
+  color: var(--tok-name);
+}
+.md-preview .tok-typeName,
+.md-preview .tok-className,
+.md-preview .tok-namespace,
+.md-preview .tok-tagName,
+.md-preview .tok-attributeValue {
+  color: var(--tok-type);
+}
+.md-preview .tok-operator {
+  color: var(--tok-operator);
+}
+.md-preview .tok-meta,
+.md-preview .tok-processingInstruction {
+  color: var(--tok-meta);
+}
+.md-preview .tok-invalid {
+  color: var(--tok-invalid);
+}
+.md-preview .tok-heading {
+  font-weight: 600;
+}
+.md-preview .tok-emphasis {
+  font-style: italic;
+}
+.md-preview .tok-strong {
+  font-weight: 600;
+}
+.md-preview .tok-link,
+.md-preview .tok-url {
+  text-decoration: underline;
+}
