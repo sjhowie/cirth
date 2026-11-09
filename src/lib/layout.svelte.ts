@@ -1,19 +1,13 @@
 /**
  * Layout state and the extension points for later features.
  *
- *  - registerSidebarPanel({ id, title, component })  adds a button + panel to the sidebar switch
- *    (Explorer is built in; the Search panel plugs in here).
+ *  - sidebarVisible: the sidebar (Explorer + folder search) starts hidden and opens when a folder
+ *    is set (see setRoot); Ctrl+B toggles it.
  *  - setPreviewComponent(Component)  fills the preview pane beside the editor; show it with
  *    layout.previewMode = "side" | "only" ("off" hides it).
  *  - registerOverlay(Component)  mounts a component at the app root (command palette, quick open).
  */
 import type { Component } from "svelte";
-
-export interface SidebarPanel {
-  id: string;
-  title: string;
-  component: Component;
-}
 
 export type PreviewMode = "off" | "side" | "only";
 
@@ -29,12 +23,10 @@ function readStoredWidth(): number {
 }
 
 class LayoutStore {
-  sidebarVisible = $state(true);
+  sidebarVisible = $state(false);
   sidebarWidth = $state(readStoredWidth());
-  activePanel = $state("explorer");
   previewMode = $state<PreviewMode>("off");
   settingsOpen = $state(false);
-  panels = $state.raw<SidebarPanel[]>([]);
   overlays = $state.raw<Component[]>([]);
   previewComponent = $state.raw<Component | null>(null);
 
@@ -49,15 +41,6 @@ class LayoutStore {
 }
 
 export const layout = new LayoutStore();
-
-export function registerSidebarPanel(panel: SidebarPanel): void {
-  layout.panels = [...layout.panels.filter((p) => p.id !== panel.id), panel];
-}
-
-export function showSidebarPanel(id: string): void {
-  layout.activePanel = id;
-  layout.sidebarVisible = true;
-}
 
 export function registerOverlay(component: Component): void {
   layout.overlays = [...layout.overlays, component];

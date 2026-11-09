@@ -3,7 +3,7 @@
 use crate::error::{AppError, blocking};
 use ignore::WalkBuilder;
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub const MAX_LIST_FILES: usize = 50_000;
 
@@ -92,9 +92,10 @@ pub fn rename_sync(from: &Path, to: &Path) -> Result<(), AppError> {
 }
 
 /// Existing command-line arguments (after the program name), canonicalized without `\\?\`.
-pub fn startup_paths_from(args: impl Iterator<Item = String>) -> Vec<String> {
+/// Relative arguments are resolved against `base` (the launching process's working directory).
+pub fn startup_paths_from(args: impl Iterator<Item = String>, base: &Path) -> Vec<String> {
     args.filter_map(|a| {
-        let p = PathBuf::from(&a);
+        let p = base.join(&a); // an absolute argument replaces `base`
         if !p.exists() {
             return None;
         }
@@ -145,9 +146,46 @@ pub async fn trash_path(path: String) -> Result<(), AppError> {
     .await
 }
 
+#[derive(Default)]
+struct OpenPathsInner {
+    ready: bool,
+    pending: Vec<String>,
+}
+
+/// Paths from second launches that arrive before the frontend is listening are queued here and
+/// handed over by `get_startup_paths`, which is the frontend's "ready" signal.
+#[derive(Default)]
+pub struct OpenPathsState(std::sync::Mutex<OpenPathsInner>);
+
+impl OpenPathsState {
+    fn lock(&self) -> std::sync::MutexGuard<'_, OpenPathsInner> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Before ready: queue and return `None`. After ready: return the paths to emit now.
+    pub fn deliver(&self, paths: Vec<String>) -> Option<Vec<String>> {
+        let mut s = self.lock();
+        if s.ready {
+            Some(paths)
+        } else {
+            s.pending.extend(paths);
+            None
+        }
+    }
+
+    /// Marks the frontend ready; returns `startup` followed by everything queued so far.
+    pub fn take_ready(&self, mut startup: Vec<String>) -> Vec<String> {
+        let mut s = self.lock();
+        s.ready = true;
+        startup.append(&mut s.pending);
+        startup
+    }
+}
+
 #[tauri::command]
-pub async fn get_startup_paths() -> Result<Vec<String>, AppError> {
-    Ok(startup_paths_from(std::env::args().skip(1)))
+pub async fn get_startup_paths(state: tauri::State<'_, OpenPathsState>) -> Result<Vec<String>, AppError> {
+    let base = std::env::current_dir().map_err(|e| AppError::io(format!("current directory: {e}")))?;
+    Ok(state.take_ready(startup_paths_from(std::env::args().skip(1), &base)))
 }
 
 #[cfg(test)]
@@ -232,9 +270,29 @@ mod tests {
         let f = d.path().join("f.txt");
         touch(&f);
         let args = vec![f.to_string_lossy().into_owned(), "--flag".to_string(), "C:\\definitely\\missing.txt".to_string()];
-        let out = startup_paths_from(args.into_iter());
+        let out = startup_paths_from(args.into_iter(), d.path());
         assert_eq!(out.len(), 1);
         assert!(!out[0].starts_with(r"\\?\"));
         assert!(out[0].ends_with("f.txt"));
+    }
+
+    #[test]
+    fn open_paths_queue_until_ready_then_pass_through() {
+        let s = OpenPathsState::default();
+        assert_eq!(s.deliver(vec!["a".into()]), None);
+        assert_eq!(s.deliver(vec!["b".into()]), None);
+        assert_eq!(s.take_ready(vec!["s".into()]), vec!["s", "a", "b"]);
+        assert_eq!(s.deliver(vec!["c".into()]), Some(vec!["c".to_string()]));
+        assert_eq!(s.take_ready(vec![]), Vec::<String>::new());
+    }
+
+    #[test]
+    fn startup_paths_resolve_relative_against_base() {
+        let d = tempfile::tempdir().unwrap();
+        touch(&d.path().join("sub/rel.txt"));
+        let args = vec!["sub/rel.txt".to_string(), "sub".to_string(), "nope.txt".to_string()];
+        let out = startup_paths_from(args.into_iter(), d.path());
+        let base = dunce::canonicalize(d.path()).unwrap();
+        assert_eq!(out, vec![base.join("sub").join("rel.txt").to_string_lossy().into_owned(), base.join("sub").to_string_lossy().into_owned()]);
     }
 }

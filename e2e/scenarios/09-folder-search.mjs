@@ -43,7 +43,32 @@ export async function run(t) {
   await page.waitForSelector('.tree .row');
   await page.locator('.cm-content').click();
 
-  // ---- open panel, search "foo" ----
+  // ---- search box sits under the Explorer header; results replace the tree; Esc / x restore it ----
+  t.ok(
+    await page.evaluate(() => {
+      const kids = [...document.querySelector('.explorer').children];
+      return kids[0].classList.contains('head') && kids[1].classList.contains('form') && !!kids[1].querySelector('input[aria-label="Search query"]');
+    }),
+    'search box is directly under the Explorer header',
+  );
+  t.eq(await page.locator('.explorer .form .mag').count(), 1, 'search box has a magnifier icon');
+  t.eq(await page.locator('.explorer .form .clear').count(), 0, 'no clear button while the box is empty');
+  t.eq(await page.locator('.explorer .form input[aria-label="Replacement"]').count(), 0, 'replace row hidden by default');
+  await page.locator('.explorer .form input[placeholder^="e.g. *.ts"]').count().then((n) => t.eq(n, 0, 'file filters hidden by default'));
+  await page.locator('input[aria-label="Search query"]').fill('foo');
+  await waitSummary(page, /results? in/, 'tree-replacing results');
+  t.eq(await page.locator('.explorer .tree').count(), 0, 'typing replaces the tree with results');
+  await page.locator('.explorer .form .clear').click();
+  await page.waitForSelector('.explorer .tree .row');
+  t.eq([await page.locator('.explorer .results').count(), await page.locator('input[aria-label="Search query"]').inputValue()], [0, ''], 'x clear button restores the tree and empties the box');
+  await page.locator('input[aria-label="Search query"]').fill('foo');
+  await waitSummary(page, /results? in/, 'results again');
+  await page.locator('input[aria-label="Search query"]').press('Escape');
+  await page.waitForSelector('.explorer .tree .row');
+  t.eq([await page.locator('.explorer .results').count(), await page.locator('input[aria-label="Search query"]').inputValue()], [0, ''], 'Esc restores the tree and empties the box');
+
+  // ---- Ctrl+Shift+F focuses the box, search "foo" ----
+  await page.locator('.cm-content').click();
   await page.keyboard.press('Control+Shift+f');
   await page.waitForSelector('input[aria-label="Search query"]');
   t.ok(await page.evaluate(() => document.activeElement?.getAttribute('aria-label') === 'Search query'), 'Ctrl+Shift+F focuses the search box');
@@ -82,6 +107,7 @@ export async function run(t) {
   // ---- include / exclude globs ----
   await setQuery(page, 'foo');
   await waitSummary(page, /^8 results/, 'back to 8');
+  await page.locator('button[aria-label="Toggle search options"]').click();
   await page.locator('input[placeholder^="e.g. *.ts"]').fill('*.js');
   t.eq(await waitSummary(page, /^1 result in 1 file/, 'include'), '1 result in 1 file', 'include *.js: only b.js');
   await page.locator('input[placeholder^="e.g. *.ts"]').fill('');
@@ -112,7 +138,7 @@ export async function run(t) {
   await ui.clickTab(page, 'a.txt');
   await ed.typeAtEnd(page, 'Z');
   await waitFor(async () => (await ui.tabs(page)).find((x) => x.title === 'a.txt').dirty, { timeout: 3000, label: 'a.txt dirty' }).catch(() => {});
-  await page.locator('button[aria-label="Toggle replace"]').click();
+  // (search options stay open from the glob section above)
   await page.locator('input[aria-label="Replacement"]').fill('QUX');
   await setQuery(page, 'foo');
   await waitSummary(page, /^8 results/, 'results before replace');

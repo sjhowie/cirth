@@ -3,11 +3,10 @@
  * Call once from the page's onMount, after registerAppCommands().
  */
 import CommandPalette from "../components/CommandPalette.svelte";
-import SearchPanel from "../components/SearchPanel.svelte";
 import { registerCommand } from "../commands";
 import { getView } from "../editorHost.svelte";
 import { isTauri } from "../ipc";
-import { registerOverlay, registerSidebarPanel, showSidebarPanel } from "../layout.svelte";
+import { layout, registerOverlay } from "../layout.svelte";
 import { reportError } from "../notifications.svelte";
 import { explorer } from "../explorer.svelte";
 import { listenForSearchEvents, runSearch, search } from "../search/search.svelte";
@@ -31,7 +30,6 @@ export function registerPaletteAndSearch(): void {
   registered = true;
 
   registerOverlay(CommandPalette);
-  registerSidebarPanel({ id: "search", title: "Search", component: SearchPanel });
 
   registerCommand({ id: "palette.commands", label: "Command Palette…", category: "View", keys: ["Mod-Shift-p"], run: () => openPalette(">") });
   registerCommand({ id: "palette.quickOpen", label: "Go to File…", category: "File", keys: ["Mod-p"], run: () => openPalette("") });
@@ -43,9 +41,11 @@ export function registerPaletteAndSearch(): void {
     run: () => {
       const selected = selectedSingleLine();
       if (selected !== null) search.query = selected;
-      showSidebarPanel("search");
+      layout.sidebarVisible = true;
+      // The search box only exists with a folder open; without one the Explorer empty state shows.
+      if (!explorer.root) return;
       search.focusRequest++;
-      if (selected !== null && explorer.root) void runSearch();
+      if (selected !== null) void runSearch();
     },
   });
 

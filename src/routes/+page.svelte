@@ -3,7 +3,6 @@
   import { registerAppCommands } from "$lib/appCommands";
   import ChangedBanner from "$lib/components/ChangedBanner.svelte";
   import Editor from "$lib/components/Editor.svelte";
-  import Explorer from "$lib/components/Explorer.svelte";
   import MenuBar from "$lib/components/MenuBar.svelte";
   import Modal from "$lib/components/Modal.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
@@ -15,15 +14,13 @@
   import { confirmExit, newTab, openStartupPaths } from "$lib/files";
   import { isTauri } from "$lib/ipc";
   import { installKeyHandler } from "$lib/keys.svelte";
-  import { layout, registerSidebarPanel } from "$lib/layout.svelte";
+  import { layout } from "$lib/layout.svelte";
   import { registerMarkdownPreview } from "$lib/markdown/preview.svelte";
   import { reportError } from "$lib/notifications.svelte";
   import { initSettings, isDark, settings, themeState } from "$lib/settings.svelte";
   import { tabsStore } from "$lib/tabs.svelte";
   import { startWatching, syncWatchedPaths } from "$lib/watch.svelte";
   import { registerPaletteAndSearch } from "$lib/palette/register";
-
-  registerSidebarPanel({ id: "explorer", title: "Explorer", component: Explorer });
 
   // Theme: chrome CSS variables + every tab's CodeMirror theme/font/indent/wrap.
   $effect(() => {

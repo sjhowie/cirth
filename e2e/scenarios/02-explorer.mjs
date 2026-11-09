@@ -28,6 +28,8 @@ export async function run(t) {
   const app = await t.launch({ args: [root] });
   const page = app.page;
   await page.waitForSelector('.tree .row');
+  t.eq(await page.locator('aside.sidebar').count(), 1, 'sidebar visible when launched with a folder');
+  t.eq(await page.locator('[role=tab][aria-selected]', { hasText: /^(Explorer|Search)$/ }).count(), 0, 'no Explorer/Search tab switch in the sidebar');
 
   t.eq(await rows(page), ['docs', 'src', '.gitignore', 'ignored.log', 'top.txt'], 'top level: folders first, then files (gitignored file still listed in tree)');
   t.ok((await page.locator('.explorer .head .title').innerText()).length > 0, 'header shows the folder name');

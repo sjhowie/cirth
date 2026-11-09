@@ -1,10 +1,13 @@
 <script lang="ts">
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
+  import SearchBar from "./SearchBar.svelte";
+  import SearchResults from "./SearchResults.svelte";
   import TreeNode from "./TreeNode.svelte";
   import { deleteEntry, explorer, startCreate, startRename } from "$lib/explorer.svelte";
   import { openFolderDialog } from "$lib/files";
   import type { DirEntry } from "$lib/ipc";
   import { basename } from "$lib/paths";
+  import { search } from "$lib/search/search.svelte";
 
   let menu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null);
 
@@ -31,17 +34,22 @@
       <button class="icon-btn" title="New File" aria-label="New File" onclick={() => startCreate(root, "file")}>+</button>
       <button class="icon-btn" title="New Folder" aria-label="New Folder" onclick={() => startCreate(root, "dir")}>▣</button>
     </div>
-    <div
-      class="tree"
-      role="tree"
-      tabindex="-1"
-      oncontextmenu={(e) => {
-        e.preventDefault();
-        showMenu(e, null, root);
-      }}
-    >
-      <TreeNode dir={root} depth={0} oncontext={showMenu} />
-    </div>
+    <SearchBar />
+    {#if search.query !== ""}
+      <SearchResults />
+    {:else}
+      <div
+        class="tree"
+        role="tree"
+        tabindex="-1"
+        oncontextmenu={(e) => {
+          e.preventDefault();
+          showMenu(e, null, root);
+        }}
+      >
+        <TreeNode dir={root} depth={0} oncontext={showMenu} />
+      </div>
+    {/if}
   {:else}
     <div class="empty">
       <p>No folder open</p>

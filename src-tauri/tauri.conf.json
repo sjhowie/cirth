@@ -34,7 +34,12 @@
     "copyright": "Copyright (c) 2026 Steve Howie",
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerHooks": "windows/hooks.nsh"
+      },
+      "wix": {
+        "fragmentPaths": ["windows/explorer-menu.wxs"],
+        "componentRefs": ["ExplorerContextMenu"]
       }
     },
     "icon": [

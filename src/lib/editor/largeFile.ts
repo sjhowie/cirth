@@ -1,8 +1,9 @@
 import { basicSetup } from "codemirror";
-import { EditorView, lineNumbers, highlightActiveLine, drawSelection, keymap } from "@codemirror/view";
+import { EditorView, lineNumbers, highlightActiveLine, drawSelection, keymap, rectangularSelection, crosshairCursor } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { search, searchKeymap } from "@codemirror/search";
-import type { Extension } from "@codemirror/state";
+import { EditorState, type Extension } from "@codemirror/state";
+import { columnSelect } from "./columnSelect";
 
 /**
  * Light mode: for very large files (above the size threshold).
@@ -16,6 +17,10 @@ export function lightModeExtensions(): Extension[] {
     lineNumbers(),
     highlightActiveLine(),
     drawSelection(),
+    EditorState.allowMultipleSelections.of(true),
+    rectangularSelection(),
+    crosshairCursor(),
+    columnSelect(),
     history(),
     search({ top: true }),
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
@@ -31,6 +36,7 @@ export function lightModeExtensions(): Extension[] {
 export function fullModeExtensions(lang: Extension): Extension[] {
   return [
     basicSetup,
+    columnSelect(),
     lang,
     EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off", autocapitalize: "off" }),
   ];

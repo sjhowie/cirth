@@ -1,5 +1,6 @@
 import { createDir, createFile, listDir, renamePath, trashPath, type DirEntry } from "./ipc";
 import { showDialog } from "./dialogs.svelte";
+import { layout } from "./layout.svelte";
 import { notifyError, reportError } from "./notifications.svelte";
 import { basename, dirname, isInside, joinPath, normPath, replacePrefix, samePath } from "./paths";
 import { tabsStore } from "./tabs.svelte";
@@ -55,6 +56,7 @@ export async function setRoot(path: string): Promise<void> {
   if (await loadDir(path)) {
     explorer.root = path;
     explorer.expanded[normPath(path)] = true;
+    layout.sidebarVisible = true;
   }
 }
 

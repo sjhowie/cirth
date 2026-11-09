@@ -1,7 +1,6 @@
 <script lang="ts">
+  import Explorer from "./Explorer.svelte";
   import { layout } from "$lib/layout.svelte";
-
-  const panel = $derived(layout.panels.find((p) => p.id === layout.activePanel) ?? layout.panels[0]);
 
   function startDrag(e: PointerEvent): void {
     const startX = e.clientX;
@@ -23,20 +22,8 @@
 </script>
 
 <aside class="sidebar" style:width="{layout.sidebarWidth}px">
-  {#if layout.panels.length > 1}
-    <div class="switch" role="tablist">
-      {#each layout.panels as p (p.id)}
-        <button role="tab" aria-selected={p.id === panel?.id} class:active={p.id === panel?.id} onclick={() => (layout.activePanel = p.id)}>
-          {p.title}
-        </button>
-      {/each}
-    </div>
-  {/if}
   <div class="body">
-    {#if panel}
-      {@const Panel = panel.component}
-      <Panel />
-    {/if}
+    <Explorer />
   </div>
 </aside>
 <button class="handle" aria-label="Resize sidebar (drag, or use arrow keys)" onpointerdown={startDrag} onkeydown={onHandleKey}></button>
@@ -49,19 +36,6 @@
     background: var(--bg);
     min-height: 0;
     overflow: hidden;
-  }
-  .switch {
-    display: flex;
-    border-bottom: 1px solid var(--border);
-  }
-  .switch button {
-    flex: 1;
-    padding: 6px 0;
-    color: var(--fg-dim);
-  }
-  .switch button.active {
-    color: var(--fg);
-    box-shadow: inset 0 -2px 0 var(--accent);
   }
   .body {
     flex: 1;

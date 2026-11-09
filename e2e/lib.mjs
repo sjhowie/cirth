@@ -151,10 +151,12 @@ export function processTreeMemory(pid) {
  * Launches the debug exe with a CDP port, connects, waits for the editor shell.
  * Returns { page, pid, close(), exited(), logs() }.
  */
-export async function launchApp({ args = [] } = {}) {
+export async function launchApp({ args = [], multiInstance = true } = {}) {
   if (!existsSync(EXE)) throw new Error(`Missing ${EXE}; run cargo build in src-tauri first.`);
   const proc = spawn(EXE, args, {
-    env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}` },
+    // MULTI_INSTANCE: the single-instance plugin would swallow this launch into any SimpleEditor the user has open.
+    // Only the single-instance scenario passes multiInstance: false.
+    env: { ...process.env, ...(multiInstance ? { SIMPLEEDITOR_MULTI_INSTANCE: '1' } : {}), WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}` },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: false,
   });

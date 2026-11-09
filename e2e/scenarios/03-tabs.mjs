@@ -13,6 +13,12 @@ export async function run(t) {
   await page.waitForFunction(() => document.querySelectorAll('.strip .tab').length === 3, null, { timeout: 15000 });
   t.eq((await ui.tabs(page)).map((x) => x.title), ['a.txt', 'b.txt', 'c.txt'], 'three tabs open');
   t.eq(await ui.activeTitle(page), 'c.txt', 'last opened is active');
+  t.eq(await page.locator('aside.sidebar').count(), 0, 'sidebar hidden when launched with files only (no folder)');
+  await page.keyboard.press('Control+b');
+  await page.locator('aside.sidebar .empty').waitFor({ timeout: 5000 });
+  t.ok((await page.locator('aside.sidebar .empty').innerText()).includes('No folder open'), 'Ctrl+B shows the empty Explorer when no folder is open');
+  await page.keyboard.press('Control+b');
+  t.eq(await page.locator('aside.sidebar').count(), 0, 'Ctrl+B hides the sidebar again');
 
   // Edit each. a.txt gets two separate undo groups (start, then end) and is left scrolled.
   await ui.clickTab(page, 'a.txt');

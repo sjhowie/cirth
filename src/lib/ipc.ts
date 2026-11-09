@@ -235,6 +235,14 @@ async function listenTo<T>(event: string, handler: (payload: T) => void): Promis
 export const onFsChanged = (handler: (payload: FsChangedPayload) => void) =>
   listenTo<FsChangedPayload>("fs://changed", handler);
 
+/** Paths a second launch (Explorer menu, command line) handed to this running instance. */
+export interface OpenPathsPayload {
+  paths: string[];
+}
+
+export const onOpenPaths = (handler: (payload: OpenPathsPayload) => void) =>
+  listenTo<OpenPathsPayload>("app://open-paths", handler);
+
 // ---------- folder search / replace ----------
 
 export interface SearchParams {

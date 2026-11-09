@@ -65,7 +65,7 @@ Invalid input → `AppError{kind:"parse", message, line, col}`; output is never 
 | `create_dir` | `{ path }` | `()` |
 | `rename_path` | `{ from, to }` | `()` — fails if `to` exists |
 | `trash_path` | `{ path }` | `()` — OS recycle bin (`trash` crate) |
-| `get_startup_paths` | `{}` | `string[]` — absolute paths passed on the command line |
+| `get_startup_paths` | `{}` | `string[]` — existing command-line paths, absolute (relative ones resolved against the working directory), followed by paths queued by second launches that arrived early. Also the frontend's "ready" signal: call it once, after subscribing to `app://open-paths` |
 
 ## Watching
 | Command | Input | Output |
@@ -74,6 +74,26 @@ Invalid input → `AppError{kind:"parse", message, line, col}`; output is never 
 
 Event `fs://changed` payload `{ paths: string[] }` (absolute), debounced 200 ms. The frontend
 decides what changed by re-reading (`list_dir` / `read_file`).
+
+## Single instance and `app://open-paths`
+Desktop builds register `tauri-plugin-single-instance` as the first plugin. A second launch (Explorer
+"Open with SimpleEditor", or a command line) does not start a window: it hands its argv to the running
+instance and exits.
+- Rust resolves the second process's arguments against *its* working directory and keeps only existing
+  paths (`tree::startup_paths_from(args, base)`, the same function `get_startup_paths` uses with the
+  current directory), then emits event `app://open-paths` payload `{ paths: string[] }` (absolute,
+  no `\\?\` prefix) to the `main` window, calls `unminimize()` and `set_focus()` on it.
+- Race: a second launch can arrive while the first window is still loading. Until the frontend calls
+  `get_startup_paths` (after it has subscribed), `OpenPathsState` queues the paths instead of emitting;
+  that call drains the queue into its result and flips the state to "ready", after which paths are
+  emitted directly. Each path is delivered exactly once.
+- Frontend (`openStartupPaths` in `src/lib/files.ts`) subscribes once and calls `openPaths(paths)`:
+  folders become the explorer root, files become tabs, exactly as for startup paths.
+- Opt-out: environment variable `SIMPLEEDITOR_MULTI_INSTANCE=1` skips the plugin, so several
+  instances can run side by side. The E2E launcher sets it, except scenario `12-single-instance`.
+- Installers add an Explorer context-menu entry "Open with SimpleEditor" (files, folders, folder
+  background) that runs `simple-editor.exe "%1"` (`"%V"` for the background): NSIS per user under
+  `HKCU\Software\Classes`, MSI per machine under `HKLM\Software\Classes` (see `src-tauri/windows/`).
 
 ## Folder search / replace
 | Command | Input | Output |

@@ -5,7 +5,7 @@ import { activateTab, getTabDoc, makeTabState, recomputeDirty, removeTab, setTab
 import { showDialog } from "./dialogs.svelte";
 import { detectLanguageName, loadLanguageExtension, PLAIN_TEXT } from "./editor/languages";
 import { setRoot } from "./explorer.svelte";
-import { getStartupPaths, isTauri, listDir, readFile, toAppError, writeFile } from "./ipc";
+import { getStartupPaths, isTauri, listDir, onOpenPaths, readFile, toAppError, writeFile } from "./ipc";
 import { notifyError, notifyInfo, reportError } from "./notifications.svelte";
 import { basename } from "./paths";
 import { defaultEol } from "./platform";
@@ -130,15 +130,8 @@ export async function openFolderDialog(): Promise<void> {
   if (dir) await setRoot(dir);
 }
 
-/** Opens command-line paths: folders become the explorer root, files become tabs. */
-export async function openStartupPaths(): Promise<void> {
-  let paths: string[];
-  try {
-    paths = await getStartupPaths();
-  } catch (e) {
-    reportError("Read startup paths", e);
-    return;
-  }
+/** Opens paths: folders become the explorer root, files become tabs. */
+export async function openPaths(paths: string[]): Promise<void> {
   for (const p of paths) {
     // The contract has no stat command: a successful list_dir means "folder", otherwise try as a file.
     let isFolder = false;
@@ -151,6 +144,32 @@ export async function openStartupPaths(): Promise<void> {
     if (isFolder) await setRoot(p);
     else await openPath(p);
   }
+}
+
+let openPathsSubscribed = false;
+
+/** Opens command-line paths, and keeps opening paths that later launches hand to this instance. */
+export async function openStartupPaths(): Promise<void> {
+  if (isTauri() && !openPathsSubscribed) {
+    openPathsSubscribed = true;
+    try {
+      // Awaited before get_startup_paths: that call tells Rust we are ready to receive events.
+      await onOpenPaths((payload) => {
+        openPaths(payload.paths).catch((e) => reportError("Open paths from another launch", e));
+      });
+    } catch (e) {
+      openPathsSubscribed = false;
+      reportError("Listen for paths from other launches", e);
+    }
+  }
+  let paths: string[];
+  try {
+    paths = await getStartupPaths();
+  } catch (e) {
+    reportError("Read startup paths", e);
+    return;
+  }
+  await openPaths(paths);
 }
 
 // ---------- save ----------
