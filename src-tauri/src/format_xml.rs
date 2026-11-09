@@ -2,10 +2,12 @@
 //! so entities, CDATA, comments, PIs and the DOCTYPE are never re-escaped or altered.
 
 use crate::error::AppError;
-use crate::files::{raw_body, utf8_text};
+use crate::files::{utf8_text};
 use crate::format_json::{FormatOptions, Mode};
 use quick_xml::Reader;
 use quick_xml::events::Event;
+use crate::upload::{UploadState, request_bytes};
+use tauri::State;
 use tauri::ipc::{Request, Response};
 
 const UTF8_BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
@@ -178,9 +180,10 @@ pub fn format_xml_bytes(input: &[u8], opts: FormatOptions) -> Result<Vec<u8>, Ap
 }
 
 #[tauri::command(async)]
-pub fn format_xml(request: Request<'_>) -> Result<Response, AppError> {
+pub fn format_xml(request: Request<'_>, uploads: State<'_, UploadState>) -> Result<Response, AppError> {
+    let body = request_bytes(&request, &uploads)?;
     let opts = FormatOptions::from_request(&request)?;
-    format_xml_bytes(raw_body(&request)?, opts).map(Response::new)
+    format_xml_bytes(&body, opts).map(Response::new)
 }
 
 #[cfg(test)]

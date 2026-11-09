@@ -4,8 +4,10 @@
 //! output has the layout of `JSON.stringify(JSON.parse(x), null, indent)`. Output is only
 //! returned for valid input.
 
-use crate::files::{header, raw_body, utf8_text};
+use crate::files::{header, utf8_text};
 use crate::error::AppError;
+use crate::upload::{UploadState, request_bytes};
+use tauri::State;
 use tauri::ipc::{Request, Response};
 
 const UTF8_BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
@@ -315,9 +317,10 @@ fn scan_number(input: &[u8], start: usize, out: &mut Vec<u8>) -> Result<usize, S
 }
 
 #[tauri::command(async)]
-pub fn format_json(request: Request<'_>) -> Result<Response, AppError> {
+pub fn format_json(request: Request<'_>, uploads: State<'_, UploadState>) -> Result<Response, AppError> {
+    let body = request_bytes(&request, &uploads)?;
     let opts = FormatOptions::from_request(&request)?;
-    format_bytes(raw_body(&request)?, opts).map(Response::new)
+    format_bytes(&body, opts).map(Response::new)
 }
 
 #[cfg(test)]

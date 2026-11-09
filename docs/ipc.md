@@ -15,6 +15,25 @@ frontend wrapper in `src/lib/ipc.ts`. Change this file in the same commit as any
   `{ "kind": string, "message": string, "line"?: number, "col"?: number }`.
   `kind` ∈ `io | encoding | parse | notFound | invalidArg | cancelled`. `line`/`col` are 1-based.
 
+## Chunked uploads (large raw requests)
+WebView2 kills the page when one request body passes ~110 MB (measured: 100 MB OK, 120 MB crash,
+also for a plain `fetch`). Raw *responses* are not affected. So any raw request body larger than
+`CHUNK_BYTES` (32 MiB) is staged first:
+
+| Command | Kind | Input | Output |
+|---|---|---|---|
+| `upload_begin` | JSON | `{}` | `{ uploadId: string }` |
+| `upload_chunk` | raw request | body = next chunk; header `x-upload-id` | `()` |
+| `upload_discard` | JSON | `{ uploadId }` | `()` — idempotent |
+
+- Any raw-request command (`write_file`, `format_json`, `format_xml`) accepts header
+  `x-upload-id` with an empty body instead of an inline body; the staged bytes are concatenated in
+  order, consumed and freed by that call (success or error). Unknown id → `invalidArg`.
+- Chunks are cut on UTF-8 boundaries by the frontend (encode the string in slices that never split a
+  surrogate pair), so no slice needs a full-document copy. Rust treats the concatenation as bytes.
+- Staged uploads not consumed within 10 minutes are dropped. Frontend calls `upload_discard` on any
+  failure between begin and the consuming call.
+
 ## Files
 | Command | Kind | Input | Output |
 |---|---|---|---|

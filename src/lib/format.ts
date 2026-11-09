@@ -19,7 +19,7 @@ export async function formatActiveDocument(mode: FormatMode): Promise<void> {
   const doc = getTabDoc(tab);
   let formatted: string;
   try {
-    formatted = await formatText(kind, doc.toString(), mode, settings.indent);
+    formatted = await formatText(kind, doc, mode, settings.indent);
   } catch (e) {
     const err = toAppError(e);
     if (err.kind === "parse") {

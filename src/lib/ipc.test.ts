@@ -4,6 +4,7 @@ const invokeMock = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 
+import { SLICE_UNITS } from "./chunks";
 import { buildWriteHeaders, checkRawRequestSize, isAppError, MAX_RAW_REQUEST_BYTES, parseReadFileResponse, readFile, toAppError, writeFile } from "./ipc";
 
 function buildResponse(meta: object, text: string): ArrayBuffer {
@@ -121,5 +122,59 @@ describe("raw request size limit", () => {
     expect(isAppError(thrown)).toBe(true);
     expect(thrown).toMatchObject({ kind: "invalidArg" });
     expect((thrown as { message: string }).message).toMatch(/format_json.*limit/);
+  });
+});
+
+describe("chunked staging", () => {
+  const opts = { encoding: "utf-8", bom: false, eol: "lf" as const };
+  const big = "a".repeat(SLICE_UNITS + 5);
+
+  beforeEach(() => {
+    invokeMock.mockReset();
+    (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  });
+
+  it("sends small payloads as one inline request", async () => {
+    invokeMock.mockResolvedValue({ size: 3 });
+    await writeFile("/x", "abc", opts);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock.mock.calls[0][0]).toBe("write_file");
+    expect(invokeMock.mock.calls[0][2].headers["x-upload-id"]).toBeUndefined();
+  });
+
+  it("stages large payloads: begin, chunks in order, then the command with x-upload-id and an empty body", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => (cmd === "upload_begin" ? { uploadId: "u1" } : { size: 1 }));
+    await writeFile("/x", big, opts);
+    const cmds = invokeMock.mock.calls.map((c) => c[0]);
+    expect(cmds).toEqual(["upload_begin", "upload_chunk", "upload_chunk", "write_file"]);
+    const chunks = invokeMock.mock.calls.filter((c) => c[0] === "upload_chunk");
+    expect(chunks.map((c) => (c[1] as Uint8Array).length)).toEqual([SLICE_UNITS, 5]);
+    for (const c of chunks) expect(c[2].headers).toEqual({ "x-upload-id": "u1" });
+    const last = invokeMock.mock.calls[3];
+    expect((last[1] as Uint8Array).length).toBe(0);
+    expect(last[2].headers["x-upload-id"]).toBe("u1");
+    expect(last[2].headers["x-path"]).toBe(encodeURIComponent("/x"));
+  });
+
+  it("discards the staged upload and rethrows when a chunk fails", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "upload_begin") return { uploadId: "u2" };
+      if (cmd === "upload_chunk") throw { kind: "io", message: "disk full" };
+      return undefined;
+    });
+    await expect(writeFile("/x", big, opts)).rejects.toMatchObject({ kind: "io", message: "disk full" });
+    const discard = invokeMock.mock.calls.find((c) => c[0] === "upload_discard");
+    expect(discard?.[1]).toEqual({ uploadId: "u2" });
+    expect(invokeMock.mock.calls.some((c) => c[0] === "write_file")).toBe(false);
+  });
+
+  it("discards (idempotent) and rethrows when the consuming command fails", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "upload_begin") return { uploadId: "u3" };
+      if (cmd === "write_file") throw { kind: "encoding", message: "cannot encode" };
+      return undefined;
+    });
+    await expect(writeFile("/x", big, opts)).rejects.toMatchObject({ kind: "encoding" });
+    expect(invokeMock.mock.calls.some((c) => c[0] === "upload_discard" && c[1].uploadId === "u3")).toBe(true);
   });
 });

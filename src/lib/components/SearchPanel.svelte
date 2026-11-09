@@ -13,7 +13,9 @@
   });
   const summary = $derived.by(() => {
     void search.version;
-    return search.results ? summaryText(search.results) : "";
+    // A finished search with no matches shows "No results" (below) instead of "0 results in 0 files".
+    const r = search.results;
+    return r && !(r.finished && r.matches === 0) ? summaryText(r) : "";
   });
   const replaceEnabled = $derived.by(() => {
     void search.version;

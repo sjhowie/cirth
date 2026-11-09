@@ -70,7 +70,7 @@ export async function run(t) {
   t.eq(aWord?.lines, [1, 2], 'whole word: a.txt lines 1 and 2 only');
   await toggle(page, 'Match Whole Word');
   await setQuery(page, 'ba[rz]');
-  t.eq(await waitSummary(page, /^\d+ results?/, 'literal'), '0 results in 0 files', 'literal "ba[rz]" finds nothing');
+  t.eq(await waitSummary(page, /^(No results|\d+ results?)/, 'literal'), 'No results', 'literal "ba[rz]" finds nothing');
   await toggle(page, 'Use Regular Expression');
   t.eq(await waitSummary(page, /^4 results/, 'regex'), '4 results in 2 files', 'regex ba[rz]: 4 results in 2 files');
   await setQuery(page, '(');

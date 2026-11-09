@@ -8,6 +8,8 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::io::Write;
 use std::path::Path;
+use crate::upload::{UploadState, request_bytes};
+use tauri::State;
 use tauri::ipc::{InvokeBody, Request, Response};
 use tempfile::NamedTempFile;
 
@@ -268,7 +270,9 @@ pub async fn read_file(path: String) -> Result<Response, AppError> {
 }
 
 #[tauri::command(async)]
-pub fn write_file(request: Request<'_>) -> Result<WriteResult, AppError> {
+pub fn write_file(request: Request<'_>, uploads: State<'_, UploadState>) -> Result<WriteResult, AppError> {
+    // Take any staged upload first so it is consumed even when a header below is rejected.
+    let body = request_bytes(&request, &uploads)?;
     let path = header(&request, "x-path")?.ok_or_else(|| AppError::invalid_arg("missing x-path header"))?;
     let path = percent_decode(&path)?;
     let encoding = header(&request, "x-encoding")?.unwrap_or_else(|| "utf-8".to_string());
@@ -278,7 +282,7 @@ pub fn write_file(request: Request<'_>) -> Result<WriteResult, AppError> {
         Some(other) => return Err(AppError::invalid_arg(format!("x-bom must be 1 or 0, got '{other}'"))),
     };
     let eol = Eol::parse(&header(&request, "x-eol")?.unwrap_or_else(|| "lf".to_string()))?;
-    let text = utf8_text(raw_body(&request)?, "request body")?;
+    let text = utf8_text(&body, "request body")?;
     let size = write_text(Path::new(&path), text, &encoding, bom, eol)?;
     Ok(WriteResult { size })
 }

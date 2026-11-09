@@ -1,44 +1,52 @@
 import { openSync, writeSync, closeSync, statSync } from 'node:fs';
 import { ed, ui, join, waitFor, sleep, processTreeMemory, readFileSync } from '../lib.mjs';
 
-export const name = '05 big file (150 MB open/type, 90 MB format+save)';
+export const name = '05 big file (150 MB UTF-8 + 120 MB UTF-16LE CRLF)';
 
 const MB = 1024 * 1024;
 const mb = (n) => (n / MB).toFixed(0);
 
-/** Streams a pretty (indent 2) JSON array to disk; returns exact facts about it and its minified form. */
-function generate(path, target) {
+/**
+ * Streams a pretty (indent 2) JSON array to disk until `target` bytes; returns exact facts about it
+ * (document chars/lines, minified chars and head/tail). `utf16` writes UTF-16LE + BOM with CRLF.
+ */
+function generate(path, target, { utf16 = false } = {}) {
   const fd = openSync(path, 'w');
-  let size = 0;
-  let lines = 0;
-  let minLen = 0;
+  let bytes = 0;
+  let chars = 0;
+  let lines = 1;
+  let minChars = 0;
   let minHead = '[';
   let minTail = '';
   const emit = (s) => {
-    const b = Buffer.from(s, 'utf8');
+    const b = utf16 ? Buffer.from(s.replace(/\n/g, '\r\n'), 'utf16le') : Buffer.from(s, 'utf8');
     writeSync(fd, b);
-    size += b.length;
+    bytes += b.length;
+    chars += s.length;
     lines += s.split('\n').length - 1;
   };
+  if (utf16) {
+    writeSync(fd, Buffer.from([0xff, 0xfe]));
+    bytes += 2;
+  }
   emit('[\n');
-  minLen = 1;
+  minChars = 1;
   let i = 0;
-  while (size < target) {
+  while (bytes < target) {
     const rec = { id: i, name: `item-${i}`, active: i % 2 === 0, tags: ['alpha', 'beta', `t${i % 97}`], nested: { k: i * 3, label: `café ${i}`, deep: { a: [i, i + 1, i + 2] } }, note: 'x'.repeat(i % 40) };
     const pretty = JSON.stringify(rec, null, 2).split('\n').map((l) => '  ' + l).join('\n');
     const min = JSON.stringify(rec);
     const minSep = i === 0 ? '' : ',';
     emit((i === 0 ? '' : ',\n') + pretty);
-    minLen += Buffer.byteLength(minSep + min, 'utf8');
+    minChars += (minSep + min).length;
     if (i < 3) minHead += minSep + min;
     minTail = min;
     i++;
   }
   emit('\n]');
-  minLen += 1;
+  minChars += 1;
   closeSync(fd);
-  // One 2-byte char (e-acute) per record: document chars = bytes - records.
-  return { size, chars: size - i, lines: lines + 1, minChars: minLen - i, minLen, records: i, minHead: minHead.slice(0, 80), minTail: minTail.slice(-60) };
+  return { bytes, chars, lines, minChars, records: i, minHead: minHead.slice(0, 80), minTail: minTail.slice(-60) };
 }
 
 async function timed(fn) {
@@ -48,14 +56,25 @@ async function timed(fn) {
 }
 
 const docSlice = (page, from, to) => page.evaluate(([f, t]) => document.querySelector('.cm-content').cmTile.view.state.sliceDoc(f, t), [from, to]);
+const docInfo = (page) => ed.docInfo(page);
+
+/** Utf-8 expectation for a minified body: BMP-only text, so utf8 bytes = chars + one extra byte per e-acute. */
+async function openFile(page, label, file, timings, key) {
+  const open = await timed(async () => {
+    await page.locator('.tree button.row', { hasText: file }).click();
+    await waitFor(async () => (await docInfo(page)).length > 0 && (await ui.activeTitle(page)) === file, { timeout: 120000, interval: 25, label: `${file} loaded` });
+  });
+  timings[key] = open.ms;
+}
 
 export async function run(t) {
   const dir = t.tmp();
-  const bigPath = join(dir, 'big150.json');
-  const midPath = join(dir, 'mid90.json');
-  const big = generate(bigPath, 150 * MB);
-  const mid = generate(midPath, 90 * MB);
-  t.info(`fixtures: big150 ${mb(big.size)} MB / ${big.lines.toLocaleString()} lines; mid90 ${mb(mid.size)} MB / ${mid.lines.toLocaleString()} lines`);
+  const p8 = join(dir, 'big150.json');
+  const p16 = join(dir, 'big120-utf16.json');
+  const f8 = generate(p8, 150 * MB);
+  const f16 = generate(p16, 120 * MB, { utf16: true });
+  t.info(`fixtures: UTF-8 ${mb(f8.bytes)} MB / ${f8.lines.toLocaleString()} lines; UTF-16LE+BOM+CRLF ${mb(f16.bytes)} MB / ${f16.lines.toLocaleString()} lines`);
+  t.ok(f8.bytes >= 150 * MB && f16.bytes >= 120 * MB, 'fixtures have the target sizes');
 
   const app = await t.launch({ args: [dir], settings: { theme: 'light', fontFamily: 'Consolas', fontSize: 14, indent: '2', largeFileThresholdMb: 10, wordWrap: false } });
   const page = app.page;
@@ -70,104 +89,94 @@ export async function run(t) {
   };
   snap('baseline');
 
-  // ---------- 150 MB: open, badge, type; format/save refused cleanly (WebView2 request-body limit) ----------
-  const open = await timed(async () => {
-    await page.locator('.tree button.row', { hasText: 'big150.json' }).click();
-    await waitFor(async () => (await ed.docInfo(page)).length > 0 && (await ui.activeTitle(page)) === 'big150.json', { timeout: 120000, interval: 25, label: 'big150.json loaded' });
-  });
-  timings.open150 = open.ms;
+  // ================= 150 MB UTF-8 =================
+  await openFile(page, '150', 'big150.json', timings, 'open150');
   t.eq(await ui.lightBadge(page), 1, '150 MB: Light mode badge shown');
-  t.eq((await ed.docInfo(page)).length, big.chars, '150 MB: document length equals file size in chars');
+  t.eq((await docInfo(page)).length, f8.chars, '150 MB: document length equals expected chars');
+  t.eq((await docInfo(page)).lines, f8.lines, '150 MB: line count equals expected');
   snap('after open 150MB');
 
   await ed.focus(page);
   await page.keyboard.press('Control+Home');
   const typeT = await timed(async () => {
     await page.keyboard.type(' ');
-    await waitFor(async () => (await ed.docInfo(page)).length === big.chars + 1, { timeout: 15000, interval: 5, label: 'typed char in doc' });
+    await waitFor(async () => (await docInfo(page)).length === f8.chars + 1, { timeout: 15000, interval: 5, label: 'typed char in doc' });
   });
   timings.type150 = typeT.ms;
-  t.eq((await ed.docInfo(page)).length, big.chars + 1, '150 MB: typing works in light mode');
-
-  await ui.clearToasts(page);
-  await page.keyboard.press('Control+Alt+M');
-  await page.waitForSelector('.toast.error', { timeout: 30000 });
-  const msg = (await ui.toasts(page)).find((x) => x.kind === 'error')?.text ?? '';
-  t.ok(/limit/.test(msg) && /format_json/.test(msg), `150 MB: minify is refused with an explanatory error toast (${msg})`);
-  t.eq((await ed.docInfo(page)).length, big.chars + 1, '150 MB: document untouched by the refused minify');
-  await ui.clearToasts(page);
-  await page.keyboard.press('Control+s');
-  await page.waitForSelector('.toast.error', { timeout: 30000 });
-  const msg2 = (await ui.toasts(page)).find((x) => x.kind === 'error')?.text ?? '';
-  t.ok(/write_file/.test(msg2) && /limit/.test(msg2), `150 MB: save is refused with an explanatory error toast (${msg2})`);
-  t.eq(statSync(bigPath).size, big.size, '150 MB: file on disk untouched by the refused save');
-  t.ok(page.url().includes('1420') && !app.exited(), '150 MB: app and page survived');
-
-  // Close it (Don't Save) and move on to the 90 MB file.
-  await page.keyboard.press('Control+w');
-  await ui.dialog(page).waitFor();
-  await ui.dialogButton(page, "Don't Save").click();
-  await ui.dialog(page).waitFor({ state: 'detached' });
-
-  // ---------- 90 MB: full open / type / minify / save / pretty / save ----------
-  const open90 = await timed(async () => {
-    await page.locator('.tree button.row', { hasText: 'mid90.json' }).click();
-    await waitFor(async () => (await ed.docInfo(page)).length > 0 && (await ui.activeTitle(page)) === 'mid90.json', { timeout: 120000, interval: 25, label: 'mid90.json loaded' });
-  });
-  timings.open90 = open90.ms;
-  t.eq(await ui.lightBadge(page), 1, '90 MB: Light mode badge shown');
-  t.eq((await ed.docInfo(page)).length, mid.chars, '90 MB: document length equals file size in chars');
-  snap('after open 90MB');
-
-  await ed.focus(page);
-  await page.keyboard.press('Control+Home');
-  await page.keyboard.type(' ');
-  await waitFor(async () => (await ed.docInfo(page)).length === mid.chars + 1, { timeout: 15000, interval: 5, label: 'typed char (90)' });
+  t.eq((await docInfo(page)).length, f8.chars + 1, '150 MB: typing works in light mode');
 
   const minT = await timed(async () => {
     await page.keyboard.press('Control+Alt+M');
-    await waitFor(async () => (await ed.docInfo(page)).lines === 1, { timeout: 300000, interval: 50, label: 'minified doc' });
+    await waitFor(async () => (await docInfo(page)).lines === 1, { timeout: 300000, interval: 50, label: 'minified doc' });
   });
-  timings.minify90 = minT.ms;
-  t.eq((await ed.docInfo(page)).length, mid.minChars, '90 MB: minified length matches the expected minified JSON');
-  t.eq(await docSlice(page, 0, 80), mid.minHead, '90 MB: minified head matches');
-  const len = (await ed.docInfo(page)).length;
-  t.eq(await docSlice(page, len - 61, len - 1), mid.minTail, '90 MB: minified tail matches');
-  snap('after minify 90MB');
-
-  const saveMinT = await timed(async () => {
-    await page.keyboard.press('Control+s');
-    await waitFor(() => statSync(midPath).size === mid.minLen, { timeout: 120000, interval: 25, label: 'minified file on disk' });
-  });
-  timings.saveMinified90 = saveMinT.ms;
-  await sleep(1500);
-  t.eq(readFileSync(midPath).subarray(0, 80).toString('utf8'), mid.minHead, '90 MB: file on disk starts with the minified JSON');
-  t.eq(statSync(midPath).size, mid.minLen, '90 MB: minified size on disk');
-  t.eq(await page.locator('[role=alert]', { hasText: 'Changed on disk' }).count(), 0, '90 MB: own save raises no "changed on disk" banner');
-  snap('after save minified 90MB');
+  timings.minify150 = minT.ms;
+  t.eq((await ui.toasts(page)).filter((x) => x.kind === 'error'), [], '150 MB: minify raised no error toast');
+  t.eq((await docInfo(page)).length, f8.minChars, '150 MB: minified length matches the expected minified JSON');
+  t.eq(await docSlice(page, 0, 80), f8.minHead, '150 MB: minified head matches');
+  let len = (await docInfo(page)).length;
+  t.eq(await docSlice(page, len - 61, len - 1), f8.minTail, '150 MB: minified tail matches');
+  snap('after minify 150MB');
 
   const prettyT = await timed(async () => {
     await page.keyboard.press('Shift+Alt+F');
-    await waitFor(async () => (await ed.docInfo(page)).lines > 1000, { timeout: 300000, interval: 50, label: 'pretty-printed doc' });
+    await waitFor(async () => (await docInfo(page)).lines > 1000, { timeout: 300000, interval: 50, label: 'pretty-printed doc' });
   });
-  timings.pretty90 = prettyT.ms;
-  const info = await ed.docInfo(page);
-  t.eq(info.lines, mid.lines, '90 MB: pretty line count equals the original');
-  t.eq(info.length, mid.chars, '90 MB: pretty length equals the original');
-  snap('after pretty 90MB');
+  timings.pretty150 = prettyT.ms;
+  const info = await docInfo(page);
+  t.eq(info.lines, f8.lines, '150 MB: pretty line count equals the original');
+  t.eq(info.length, f8.chars, '150 MB: pretty length equals the original (leading space gone)');
+  snap('after pretty 150MB');
+
+  // Add one marker char so the save visibly changes the bytes, then save.
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.type(' ');
+  await waitFor(async () => (await docInfo(page)).length === f8.chars + 1, { timeout: 15000, interval: 5, label: 'marker typed' });
   const saveT = await timed(async () => {
     await page.keyboard.press('Control+s');
-    await waitFor(() => statSync(midPath).size === mid.size, { timeout: 120000, interval: 25, label: 'pretty file on disk' });
+    await waitFor(() => statSync(p8).size === f8.bytes + 1, { timeout: 180000, interval: 25, label: '150 MB file saved' });
   });
-  timings.savePretty90 = saveT.ms;
-  await sleep(1500);
-  const buf = readFileSync(midPath);
-  t.eq(buf.length, mid.size, '90 MB: final file size equals the original');
-  t.eq(buf.subarray(0, 19).toString('utf8'), '[\n  {\n    "id": 0,\n', '90 MB: final file head is the original pretty JSON');
-  t.eq(await page.locator('[role=alert]', { hasText: 'Changed on disk' }).count(), 0, '90 MB: no banner after second save');
+  timings.save150 = saveT.ms;
+  await sleep(2500);
+  const buf = readFileSync(p8);
+  t.eq(buf.length, f8.bytes + 1, '150 MB: saved size = original + 1 byte');
+  t.eq(buf.subarray(0, 20).toString('utf8'), ' [\n  {\n    "id": 0,\n', '150 MB: saved head');
+  t.eq(buf.subarray(buf.length - 3).toString('utf8'), '}\n]', '150 MB: saved tail ends with the closing bracket');
+  t.eq(buf.indexOf(Buffer.from('\r')), -1, '150 MB: LF endings preserved');
+  t.eq(await page.locator('[role=alert]', { hasText: 'Changed on disk' }).count(), 0, '150 MB: own save raises no "changed on disk" banner');
+  t.eq((await ui.toasts(page)).filter((x) => x.kind === 'error'), [], '150 MB: no error toast after save');
+  t.eq((await ui.tabs(page)).find((x) => x.title === 'big150.json')?.dirty, false, '150 MB: tab clean after save');
+  snap('after save 150MB');
+
+  // Close it before the next file.
+  await page.keyboard.press('Control+w');
+  await page.waitForTimeout(500);
+
+  // ================= 120 MB UTF-16LE + BOM + CRLF =================
+  await openFile(page, '120', 'big120-utf16.json', timings, 'open120utf16');
+  t.eq(await ui.encoding(page), 'UTF-16 LE', '120 MB UTF-16: encoding detected');
+  t.eq(await ui.eol(page), 'CRLF', '120 MB UTF-16: EOL detected');
+  t.eq((await docInfo(page)).length, f16.chars, '120 MB UTF-16: document length equals expected chars');
+  snap('after open 120MB UTF-16');
+  await ed.focus(page);
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.type(' ');
+  await waitFor(async () => (await docInfo(page)).length === f16.chars + 1, { timeout: 15000, interval: 5, label: 'typed char (utf16)' });
+  const orig16 = readFileSync(p16);
+  const save16 = await timed(async () => {
+    await page.keyboard.press('Control+s');
+    await waitFor(() => statSync(p16).size === f16.bytes + 2, { timeout: 180000, interval: 25, label: 'UTF-16 file saved' });
+  });
+  timings.save120utf16 = save16.ms;
+  await sleep(2500);
+  const got16 = readFileSync(p16);
+  const want16Head = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(' ', 'utf16le')]);
+  t.eq(got16.length, f16.bytes + 2, '120 MB UTF-16: saved size = original + one UTF-16 unit');
+  t.ok(got16.subarray(0, 4).equals(want16Head), 'UTF-16: BOM kept, typed space follows');
+  t.ok(got16.subarray(4).equals(orig16.subarray(2)), '120 MB UTF-16: every other byte identical (encoding, CRLF and content preserved)');
+  t.eq(await page.locator('[role=alert]', { hasText: 'Changed on disk' }).count(), 0, '120 MB UTF-16: no banner after own save');
   snap('final');
 
   console.log(`    TIMINGS ms: ${JSON.stringify(timings)}`);
   console.log(`    MEMORY MB: ${JSON.stringify(mem)}`);
-  t.eq(app.consoleErrors.filter((x) => !/write_file failed|Format JSON|limit for one request/.test(x)), [], 'no unexpected console errors');
+  t.eq(app.consoleErrors, [], 'no console errors');
 }

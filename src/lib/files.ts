@@ -158,7 +158,7 @@ export async function openStartupPaths(): Promise<void> {
 async function writeTab(tab: Tab, path: string): Promise<boolean> {
   const doc = getTabDoc(tab); // captured: edits made while the write runs stay dirty
   try {
-    await writeFile(path, doc.toString(), { encoding: tab.encoding, bom: tab.bom, eol: tab.eol });
+    await writeFile(path, doc, { encoding: tab.encoding, bom: tab.bom, eol: tab.eol });
   } catch (e) {
     const err = toAppError(e);
     if (err.kind === "encoding") notifyError(`Cannot save as ${tab.encoding}: ${err.message}. Pick another encoding in the status bar.`);

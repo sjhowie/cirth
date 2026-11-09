@@ -5,6 +5,7 @@ mod format_xml;
 mod search;
 mod settings;
 mod tree;
+mod upload;
 mod watch;
 
 use tauri_plugin_log::{Target, TargetKind};
@@ -21,9 +22,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(watch::WatchState::default())
         .manage(search::SearchState::default())
+        .manage(upload::UploadState::default())
         .invoke_handler(tauri::generate_handler![
             files::read_file,
             files::write_file,
+            upload::upload_begin,
+            upload::upload_chunk,
+            upload::upload_discard,
             format_json::format_json,
             format_xml::format_xml,
             tree::list_dir,

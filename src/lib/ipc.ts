@@ -4,6 +4,9 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { CHUNK_BYTES, encodeChunks } from "./chunks";
+
+export { CHUNK_BYTES };
 
 // ---------- errors ----------
 
@@ -63,9 +66,10 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
 }
 
 /**
- * Largest request body sent through IPC. WebView2 kills the page (unsaved edits are lost) when a
- * single fetch body gets past roughly 110 MB, with no error to catch: measured with 100 MB OK and
- * 120 MB crashing, for the Tauri IPC and for a plain fetch alike. Refuse early with a normal error.
+ * Last-resort assert on every single request body. WebView2 kills the page (unsaved edits are lost)
+ * when one fetch body gets past roughly 110 MB, with no error to catch: measured with 100 MB OK and
+ * 120 MB crashing, for the Tauri IPC and for a plain fetch alike. Large payloads never get here:
+ * callRawChunked stages them in CHUNK_BYTES-sized pieces.
  */
 export const MAX_RAW_REQUEST_BYTES = 96 * 1024 * 1024;
 
@@ -89,7 +93,6 @@ async function callRaw<T>(cmd: string, body: Uint8Array, headers: Record<string,
   }
 }
 
-const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
 // ---------- files ----------
@@ -144,8 +147,35 @@ export function buildWriteHeaders(path: string, opts: WriteOptions): Record<stri
   };
 }
 
-export async function writeFile(path: string, text: string, opts: WriteOptions): Promise<{ size: number }> {
-  return callRaw<{ size: number }>("write_file", encoder.encode(text), buildWriteHeaders(path, opts));
+/** Text to send: a string, or any iterable of string pieces (a CodeMirror Text iterates lines and breaks). */
+export type TextSource = string | Iterable<string>;
+
+/**
+ * Sends text as a raw request body. One chunk goes inline; more are staged with
+ * upload_begin/upload_chunk and the command is called with x-upload-id. Staging is discarded on any
+ * failure, so nothing stays on the backend.
+ */
+export async function callRawChunked<T>(cmd: string, text: TextSource, headers: Record<string, string>): Promise<T> {
+  const chunks = encodeChunks(text);
+  const first = chunks.next();
+  if (first.done) return callRaw<T>(cmd, new Uint8Array(0), headers);
+  const second = chunks.next();
+  if (second.done) return callRaw<T>(cmd, first.value, headers);
+  const { uploadId } = await call<{ uploadId: string }>("upload_begin", {});
+  try {
+    const send = (chunk: Uint8Array) => callRaw<void>("upload_chunk", chunk, { "x-upload-id": uploadId });
+    await send(first.value);
+    await send(second.value);
+    for (const chunk of chunks) await send(chunk);
+    return await callRaw<T>(cmd, new Uint8Array(0), { ...headers, "x-upload-id": uploadId });
+  } catch (e) {
+    await call<void>("upload_discard", { uploadId }).catch((err: unknown) => console.error("upload_discard", err));
+    throw e;
+  }
+}
+
+export async function writeFile(path: string, text: TextSource, opts: WriteOptions): Promise<{ size: number }> {
+  return callRawChunked<{ size: number }>("write_file", text, buildWriteHeaders(path, opts));
 }
 
 // ---------- formatting ----------
@@ -158,9 +188,9 @@ export function buildFormatHeaders(mode: FormatMode, indent: FormatIndent): Reco
   return { "x-mode": mode, "x-indent": indent };
 }
 
-export async function formatText(kind: FormatKind, text: string, mode: FormatMode, indent: FormatIndent): Promise<string> {
+export async function formatText(kind: FormatKind, text: TextSource, mode: FormatMode, indent: FormatIndent): Promise<string> {
   const cmd = kind === "json" ? "format_json" : "format_xml";
-  const buf = await callRaw<ArrayBuffer>(cmd, encoder.encode(text), buildFormatHeaders(mode, indent));
+  const buf = await callRawChunked<ArrayBuffer>(cmd, text, buildFormatHeaders(mode, indent));
   return decoder.decode(buf);
 }
 
