@@ -4,6 +4,7 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { search, searchKeymap } from "@codemirror/search";
 import { EditorState, type Extension } from "@codemirror/state";
 import { columnSelect } from "./columnSelect";
+import { tabKey } from "./tabKey";
 
 /**
  * Light mode: for very large files (above the size threshold).
@@ -21,6 +22,7 @@ export function lightModeExtensions(): Extension[] {
     rectangularSelection(),
     crosshairCursor(),
     columnSelect(),
+    tabKey(),
     history(),
     search({ top: true }),
     keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
@@ -37,6 +39,7 @@ export function fullModeExtensions(lang: Extension): Extension[] {
   return [
     basicSetup,
     columnSelect(),
+    tabKey(),
     lang,
     EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off", autocapitalize: "off" }),
   ];

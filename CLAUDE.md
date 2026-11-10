@@ -42,7 +42,7 @@ A change is done when vitest, check, cargo test and clippy pass, plus E2E for an
 - Launches the real exe with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`, then drives it with `playwright-core` over CDP and checks the bytes on disk.
 - The debug exe needs Vite on port 1420, which the runner starts. Set `SE_EXE` to an installed exe to test a release build without Vite.
 - **One E2E run at a time:** ports 9222 and 1420 are shared. Don't run E2E or `tauri dev` while another agent is building or testing on this machine.
-- Launches set `SIMPLEEDITOR_MULTI_INSTANCE=1`, so the single-instance plugin can't hand a test launch to a SimpleEditor the user has open. Scenario 12 runs without it, and skips if any `simple-editor.exe` is running.
+- Launches set `SIMPLEEDITOR_MULTI_INSTANCE=1`, so the single-instance plugin can't hand a test launch to a SimpleEditor the user has open. Scenario 12 runs without it, and skips if any `simple-editor.exe` is running. Launches also set `WEBVIEW2_USER_DATA_FOLDER` to a temp folder: an open SimpleEditor holds the default WebView2 profile, and a second process on it with other browser arguments fails with 0x8007139F.
 - The native Open and Save dialogs can't be automated. Pass files and folders as startup arguments.
 - In page code, find the editor view from `.cm-content` (`cmTile` or `cmView`). Take screen points from `view.coordsAtPos`, not from the `.cm-line` box, which includes padding.
 

@@ -67,5 +67,18 @@ export async function run(t) {
     return v.state.selection.ranges.length;
   });
   t.eq(k, 1, 'Escape collapses to a single caret');
+
+  // Tab inserts an indent at the caret (CodeMirror leaves Tab unbound by default); Shift+Tab outdents the line.
+  const beforeTab = await ed.doc(page);
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.press('Tab');
+  const afterTab = await ed.doc(page);
+  const indent = afterTab.slice(0, afterTab.length - beforeTab.length);
+  t.eq(/^(\t| +)$/.test(indent) && afterTab === indent + beforeTab, true, `Tab inserts an indent at line start (got ${JSON.stringify(indent)})`);
+  await page.keyboard.press('Control+s');
+  await waitFor(() => readFileSync(file, 'utf8') === afterTab, { label: 'tab saved', timeout: 5000 }).catch(() => {});
+  t.eq(readFileSync(file, 'utf8'), afterTab, 'the indent is saved to disk');
+  await page.keyboard.press('Shift+Tab');
+  t.eq(await ed.doc(page), beforeTab, 'Shift+Tab removes the indent');
   t.eq(app.consoleErrors, [], 'no console errors');
 }

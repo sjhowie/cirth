@@ -156,7 +156,14 @@ export async function launchApp({ args = [], multiInstance = true } = {}) {
   const proc = spawn(EXE, args, {
     // MULTI_INSTANCE: the single-instance plugin would swallow this launch into any SimpleEditor the user has open.
     // Only the single-instance scenario passes multiInstance: false.
-    env: { ...process.env, ...(multiInstance ? { SIMPLEEDITOR_MULTI_INSTANCE: '1' } : {}), WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}` },
+    // USER_DATA_FOLDER: a running SimpleEditor holds the default WebView2 profile, and WebView2 refuses a second
+    // process on that profile with different browser arguments (0x8007139F).
+    env: {
+      ...process.env,
+      ...(multiInstance ? { SIMPLEEDITOR_MULTI_INSTANCE: '1' } : {}),
+      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}`,
+      WEBVIEW2_USER_DATA_FOLDER: join(tmpdir(), 'se-e2e-webview2'),
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: false,
   });
