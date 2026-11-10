@@ -40,6 +40,7 @@ A change is done when vitest, check, cargo test and clippy pass, plus E2E for an
 ## E2E (`e2e/`)
 
 - Launches the real exe with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`, then drives it with `playwright-core` over CDP and checks the bytes on disk.
+- The app runs on a hidden Windows desktop (`e2e/deskrun.cs`, compiled on first use into `e2e/.bin/`), so test windows never appear on screen or take focus. CDP input needs no OS focus. A test that closes the window must go through `closeMainWindow` (it finds windows on that desktop); spawn extra app processes with `spawnExe`. Set `$env:SE_E2E_VISIBLE = '1'` to watch the windows while debugging.
 - The debug exe needs Vite on port 1420, which the runner starts. Set `SE_EXE` to an installed exe to test a release build without Vite.
 - **One E2E run at a time:** ports 9222 and 1420 are shared. Don't run E2E or `tauri dev` while another agent is building or testing on this machine.
 - Launches set `SIMPLEEDITOR_MULTI_INSTANCE=1`, so the single-instance plugin can't hand a test launch to a SimpleEditor the user has open. Scenario 12 runs without it, and skips if any `simple-editor.exe` is running. Launches also set `WEBVIEW2_USER_DATA_FOLDER` to a temp folder: an open SimpleEditor holds the default WebView2 profile, and a second process on it with other browser arguments fails with 0x8007139F.

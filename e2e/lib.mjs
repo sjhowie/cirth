@@ -1,6 +1,6 @@
 // Shared helpers for the real-app E2E suite (Tauri exe + WebView2, driven over CDP).
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, copyFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,30 @@ export const EXE = process.env.SE_EXE ?? join(ROOT, 'src-tauri', 'target', 'debu
 export const CDP_PORT = 9222;
 export const VITE_PORT = 1420;
 export const SETTINGS_FILE = join(process.env.APPDATA ?? '', 'com.simpleeditor.app', 'settings.json');
+
+/**
+ * The app runs on a hidden Windows desktop (`deskrun.cs`), so test windows never reach the user's screen or take focus.
+ * CDP input needs no OS focus, and WebView2 renders normally there. SE_E2E_VISIBLE=1 shows the windows (for debugging).
+ */
+export const DESKRUN = process.platform === 'win32' && process.env.SE_E2E_VISIBLE !== '1' ? buildDeskrun() : null;
+export const DESKTOP = 'SimpleEditorE2E';
+/** Launcher pid -> app pid, when launched through DESKRUN. */
+const appPids = new Map();
+/** Spawns the app exe directly (on the hidden desktop under DESKRUN); for launches that don't need CDP. */
+export const spawnExe = (args, opts) => spawn(DESKRUN ?? EXE, DESKRUN ? ['run', DESKTOP, EXE, ...args] : args, opts);
+
+/** Compiles e2e/deskrun.cs into e2e/.bin/deskrun.exe with the C# compiler that ships with Windows, when missing or stale. */
+function buildDeskrun() {
+  const src = join(ROOT, 'e2e', 'deskrun.cs');
+  const out = join(ROOT, 'e2e', '.bin', 'deskrun.exe');
+  if (existsSync(out) && statSync(out).mtimeMs >= statSync(src).mtimeMs) return out;
+  const csc = join(process.env.WINDIR ?? 'C:\\Windows', 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe');
+  if (!existsSync(csc)) throw new Error(`Missing ${csc} to build the hidden-desktop launcher; set SE_E2E_VISIBLE=1 to run with visible windows.`);
+  mkdirSync(dirname(out), { recursive: true });
+  const r = spawnSync(csc, ['/nologo', `/out:${out}`, src], { encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(`Building deskrun.exe failed:\n${r.stdout}${r.stderr}`);
+  return out;
+}
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -153,7 +177,7 @@ export function processTreeMemory(pid) {
  */
 export async function launchApp({ args = [], multiInstance = true } = {}) {
   if (!existsSync(EXE)) throw new Error(`Missing ${EXE}; run cargo build in src-tauri first.`);
-  const proc = spawn(EXE, args, {
+  const proc = spawn(DESKRUN ?? EXE, DESKRUN ? ['run', DESKTOP, EXE, ...args] : args, {
     // MULTI_INSTANCE: the single-instance plugin would swallow this launch into any SimpleEditor the user has open.
     // Only the single-instance scenario passes multiInstance: false.
     // USER_DATA_FOLDER: a running SimpleEditor holds the default WebView2 profile, and WebView2 refuses a second
@@ -168,7 +192,11 @@ export async function launchApp({ args = [], multiInstance = true } = {}) {
     windowsHide: false,
   });
   let log = '';
-  proc.stdout.on('data', (d) => (log += d));
+  proc.stdout.on('data', (d) => {
+    log += d;
+    const m = DESKRUN && /^PID (\d+)/m.exec(log);
+    if (m) appPids.set(proc.pid, Number(m[1]));
+  });
   proc.stderr.on('data', (d) => (log += d));
   let exitCode = null;
   proc.on('exit', (c) => (exitCode = c ?? -1));
@@ -378,6 +406,10 @@ export function makePng(w = 4, h = 3, rgba = [200, 30, 30, 255]) {
 
 /** Sends WM_CLOSE to the app's main window (what the X button does). Returns true when a window accepted it. */
 export function closeMainWindow(pid) {
+  if (DESKRUN) {
+    const r = spawnSync(DESKRUN, ['close', DESKTOP, String(appPids.get(pid) ?? pid)], { encoding: 'utf8' });
+    return r.stdout.trim() === 'True';
+  }
   const r = spawnSync('pwsh', ['-NoProfile', '-Command', `(Get-Process -Id ${pid}).CloseMainWindow()`], { encoding: 'utf8' });
   return r.stdout.trim() === 'True';
 }

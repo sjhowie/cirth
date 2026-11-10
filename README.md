@@ -50,7 +50,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
-`npm run e2e` runs the real-app suite (13 scenarios). It starts Vite and launches the debug exe (`cargo build` first), then drives WebView2 over its remote-debugging port with `playwright-core` and checks the bytes on disk. Set `SE_EXE` to an installed exe to test a release build instead. The native Open and Save dialogs aren't covered.
+`npm run e2e` runs the real-app suite (13 scenarios). It starts Vite and launches the debug exe (`cargo build` first), then drives WebView2 over its remote-debugging port with `playwright-core` and checks the bytes on disk. The app runs on a hidden Windows desktop, so you can keep working while it runs; set `$env:SE_E2E_VISIBLE = '1'` to watch it. Set `SE_EXE` to an installed exe to test a release build instead. The native Open and Save dialogs aren't covered.
 
 Build the installers (NSIS per-user `.exe` and `.msi`, written to `src-tauri/target/release/bundle/`):
 

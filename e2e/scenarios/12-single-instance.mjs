@@ -1,5 +1,5 @@
-import { spawn, spawnSync } from 'node:child_process';
-import { EXE, ui, write, join, waitFor, sleep } from '../lib.mjs';
+import { spawnSync } from 'node:child_process';
+import { EXE, spawnExe, ui, write, join, waitFor, sleep } from '../lib.mjs';
 
 export const name = '12 single instance';
 
@@ -27,7 +27,7 @@ export async function run(t) {
   // A second launch fired right after it (window still loading) must be queued, not lost.
   const launching = t.launch({ args: [f1], multiInstance: false });
   await sleep(300);
-  const early = spawn(EXE, [f4], { cwd: dir, env, stdio: 'ignore', windowsHide: false });
+  const early = spawnExe([f4], { cwd: dir, env, stdio: 'ignore', windowsHide: false });
   let earlyCode = null;
   early.on('exit', (c) => (earlyCode = c ?? -1));
   const app = await launching;
@@ -38,7 +38,7 @@ export async function run(t) {
 
   // Second launch: an absolute path, then a relative one resolved against the second process's cwd.
   const started = Date.now();
-  const second = spawn(EXE, [f2, 'third.txt'], { cwd: dir, env, stdio: 'ignore', windowsHide: false });
+  const second = spawnExe([f2, 'third.txt'], { cwd: dir, env, stdio: 'ignore', windowsHide: false });
   let code = null;
   second.on('exit', (c) => (code = c ?? -1));
   await waitFor(() => code !== null, { timeout: 10000, label: 'second process to exit' }).catch(() => {});
