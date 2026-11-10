@@ -26,6 +26,12 @@
   $effect(() => {
     const dark = isDark();
     document.documentElement.dataset.theme = dark ? "dark" : "light";
+    // The native window/WebView2 background shows while resizing; keep it on the theme (startup sets it in Rust).
+    if (isTauri()) {
+      import("@tauri-apps/api/webviewWindow")
+        .then(({ getCurrentWebviewWindow }) => getCurrentWebviewWindow().setBackgroundColor(dark ? "#282c34" : "#ffffff"))
+        .catch((e) => reportError("Set window background", e));
+    }
     // Touch every setting the editor depends on so this effect re-runs when any changes.
     void [settings.fontFamily, settings.fontSize, settings.indent, settings.wordWrap];
     untrack(reconfigureAllTabs);

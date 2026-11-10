@@ -43,6 +43,35 @@ fn on_second_instance(app: &tauri::AppHandle, argv: Vec<String>, cwd: String) {
     }
 }
 
+/// The editor background (`--bg-editor` in app.css) per theme. The window and WebView2 show it until the page paints.
+const BG_LIGHT: tauri::window::Color = tauri::window::Color(0xff, 0xff, 0xff, 0xff);
+const BG_DARK: tauri::window::Color = tauri::window::Color(0x28, 0x2c, 0x34, 0xff);
+
+/// Creates the main window (`"create": false` in tauri.conf.json) hidden, gives it the theme's background, then shows it.
+/// Without this, a dark theme opens on a white window for about 300 ms (WebView2's default background before first paint).
+/// The theme setting is also injected into the page so its first paint already uses the right theme (see app.html).
+fn create_main_window(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let config = app.config().app.windows.iter().find(|w| w.label == "main").cloned().ok_or("tauri.conf.json has no \"main\" window")?;
+    let theme = settings::load(app.handle()).theme;
+    let window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
+        .initialization_script(format!("window.__SIMPLEEDITOR_THEME__ = {};", serde_json::to_string(&theme)?))
+        .build()?;
+    let dark = match theme {
+        settings::Theme::Dark => true,
+        settings::Theme::Light => false,
+        settings::Theme::System => match window.theme() {
+            Ok(t) => t == tauri::Theme::Dark,
+            Err(e) => {
+                log::error!("startup: cannot read the system theme ({e}); assuming light");
+                false
+            }
+        },
+    };
+    window.set_background_color(Some(if dark { BG_DARK } else { BG_LIGHT }))?;
+    window.show()?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
@@ -65,6 +94,7 @@ pub fn run() {
         .manage(search::SearchState::default())
         .manage(upload::UploadState::default())
         .manage(tree::OpenPathsState::default())
+        .setup(create_main_window)
         .invoke_handler(tauri::generate_handler![
             files::read_file,
             files::write_file,

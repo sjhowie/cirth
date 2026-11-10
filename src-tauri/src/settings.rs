@@ -78,6 +78,17 @@ fn settings_path(app: &tauri::AppHandle) -> Result<PathBuf, AppError> {
         .map_err(|e| AppError::io(format!("cannot resolve config dir: {e}")))
 }
 
+/// Synchronous load for startup (the window's theme is needed before it is shown).
+pub fn load(app: &tauri::AppHandle) -> Settings {
+    match settings_path(app) {
+        Ok(path) => load_from(&path),
+        Err(e) => {
+            log::error!("settings: {}; using defaults", e.message);
+            Settings::default()
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn load_settings(app: tauri::AppHandle) -> Result<Settings, AppError> {
     let path = settings_path(&app)?;

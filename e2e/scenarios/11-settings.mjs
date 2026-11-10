@@ -57,6 +57,8 @@ export async function run(t) {
   await page.waitForFunction(() => document.querySelectorAll('.strip .tab').length === 1, null, { timeout: 15000 });
   await waitFor(async () => (await theme(page)) === 'dark', { timeout: 4000, label: 'dark after relaunch' }).catch(() => {});
   t.eq(await theme(page), 'dark', 'theme persisted across relaunch');
+  // The window opens on the theme's background and the page's first paint uses it (no white flash).
+  t.eq(await page.evaluate(() => window.__SIMPLEEDITOR_THEME__), 'dark', 'Rust injected the saved theme into the page before it loaded');
   t.eq(await cmFont(page), '20px', 'font size persisted across relaunch');
   t.ok(/Consolas/.test(await cmFamily(page)), 'font family persisted across relaunch');
   t.eq(await page.locator('.cm-content.cm-lineWrapping').count(), 1, 'word wrap persisted across relaunch');

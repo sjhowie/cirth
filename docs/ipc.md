@@ -137,3 +137,11 @@ instance and exits.
 indent: "2"|"4"|"tab", largeFileThresholdMb: number, wordWrap: boolean }`
 Defaults: `system`, `"Cascadia Code, Consolas, Menlo, monospace"`, `14`, `"2"`, `10`, `false` (10 MB per `docs/decisions/big-file-spike.md`).
 Stored as `settings.json` in the Tauri app config dir.
+
+**Startup theme (no white flash).** Rust creates the main window itself (`"create": false` in `tauri.conf.json`). It loads the
+settings first, builds the window hidden, sets the window and WebView2 background to the theme's editor color (`#282c34`
+dark, `#ffffff` light; "system" asks the OS), then shows it. An initialization script sets `window.__SIMPLEEDITOR_THEME__`
+to the `theme` setting before any page script runs. `app.html` uses it to set `data-theme` before first paint, and
+`settings.svelte.ts` uses it as the initial `settings.theme`. After a theme change the frontend calls
+`setBackgroundColor` on the webview window (capabilities `core:window:allow-set-background-color` and
+`core:webview:allow-set-webview-background-color`).

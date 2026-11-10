@@ -1,8 +1,16 @@
 import { defaultSettings, isTauri, loadSettings, saveSettings, type Settings } from "./ipc";
 import { notifyInfo, reportError } from "./notifications.svelte";
 
-export const settings = $state<Settings>({ ...defaultSettings });
-export const themeState = $state({ systemDark: false });
+/** The theme setting Rust injected before the page loaded, so the first render already has the right theme. */
+function injectedTheme(): Settings["theme"] {
+  const t = typeof window === "undefined" ? undefined : (window as { __SIMPLEEDITOR_THEME__?: unknown }).__SIMPLEEDITOR_THEME__;
+  return t === "light" || t === "dark" || t === "system" ? t : defaultSettings.theme;
+}
+
+export const settings = $state<Settings>({ ...defaultSettings, theme: injectedTheme() });
+export const themeState = $state({
+  systemDark: typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches === true,
+});
 
 export function isDark(): boolean {
   return settings.theme === "dark" || (settings.theme === "system" && themeState.systemDark);
