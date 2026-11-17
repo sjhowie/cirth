@@ -1,0 +1,43 @@
+# Saves the Rust build cache on main, so release runs can restore it.
+# GitHub lets a run restore only caches saved on its own ref or on the default branch (main). Release runs are on tags,
+# and every tag is a new ref, so a cache saved by a release run is never read. This job builds what release.yml builds
+# (debug test build and release build) and saves the result under main. A release restores the cache from the previous
+# push to main: deps carry over between versions; a new stable Rust starts one cold run.
+# The job id must stay `windows` and the toolchain, rust-cache settings and env must match release.yml: rust-cache puts
+# the job id and an environment hash into the cache key. Nothing is published here.
+name: Warm cache
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+
+      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - run: npm ci
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      # Same cargo build as tauri-action (tauri build adds the custom-protocol feature), without the installer or signing.
+      - run: npm run tauri build -- --no-bundle
