@@ -1,7 +1,7 @@
 # Changelog
 What changed in each Cirth release, newest first.
 
-## Unreleased
+## 0.3.0 - 2026-11-17
 ### New
 - Added Help > About Cirth, with the version, build and a link to the source code.
 - Added Help > What's New, which also opens once after Cirth updates to a new version.
