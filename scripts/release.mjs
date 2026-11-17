@@ -17,7 +17,13 @@ function fail(message) {
   process.exit(1);
 }
 const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8' }).trim();
-const run = (cmd, a) => execFileSync(cmd, a, { cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32' });
+const run = (cmd, a) => execFileSync(cmd, a, { cwd: ROOT, stdio: 'inherit' });
+/** npm through node itself: npm.cmd can't be spawned without a shell on Windows. `npm run` sets npm_execpath. */
+function npm(a) {
+  const cli = process.env.npm_execpath;
+  if (!cli) fail('run it through npm: npm run release -- <bump>');
+  run(process.execPath, [cli, ...a]);
+}
 
 export function nextVersion(current, bump) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(current);
@@ -53,7 +59,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const tag = `v${version}`;
   if (git('tag', '--list', tag)) fail(`tag ${tag} already exists`);
 
-  run('npm', ['version', version, '--no-git-tag-version']); // package.json + package-lock.json
+  npm(['version', version, '--no-git-tag-version']); // package.json + package-lock.json
   replaceIn('src-tauri/Cargo.toml', /^(\[package\][\s\S]*?^version = ")[^"]+(")/m, `$1${version}$2`);
   replaceIn('src-tauri/Cargo.lock', /(name = "cirth"\r?\nversion = ")[^"]+(")/, `$1${version}$2`);
   git('add', 'package.json', 'package-lock.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock');
