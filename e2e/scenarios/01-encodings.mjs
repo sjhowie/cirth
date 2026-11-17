@@ -1,4 +1,5 @@
-import { ed, ui, write, join, readFileSync, encodeFor, waitBytes } from '../lib.mjs';
+import { statSync, utimesSync } from 'node:fs';
+import { ed, ui, write, join, readFileSync, encodeFor, waitBytes, waitFor, sleep } from '../lib.mjs';
 
 export const name = '01 encodings';
 
@@ -24,10 +25,17 @@ export async function run(t) {
   // Extra files for the picker + unmappable-character cases.
   const pick = write(join(dir, 'pick.txt'), encodeFor(BASE, { encoding: 'utf-16le', bom: true, eol: 'crlf' }));
   const w = write(join(dir, 'unmappable.txt'), encodeFor(BASE, { encoding: 'windows-1252', bom: false, eol: 'lf' }));
+  // CR-only line endings (classic Mac); encodeFor knows LF/CRLF only, so build the bytes here.
+  const crBytes = Buffer.from(BASE.replace(/\n/g, '\r'), 'utf8');
+  const cr = write(join(dir, 'cr-only.txt'), crBytes);
+  utimesSync(cr, new Date('2020-01-01'), new Date('2020-01-01'));
+  // UTF-8 with BOM plus one byte (0xFF) that is never valid UTF-8: opens lossy.
+  const lossyBytes = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('ab'), Buffer.from([0xff]), Buffer.from('cd\n')]);
+  const lossy = write(join(dir, 'lossy.txt'), lossyBytes);
 
-  const app = await t.launch({ args: [...cases.map((c) => c.file), pick, w] });
+  const app = await t.launch({ args: [...cases.map((c) => c.file), pick, w, cr, lossy] });
   const page = app.page;
-  await page.waitForFunction((n) => document.querySelectorAll('.strip .tab').length >= n, cases.length + 2, { timeout: 20000 });
+  await page.waitForFunction((n) => document.querySelectorAll('.strip .tab').length >= n, cases.length + 4, { timeout: 20000 });
 
   for (const c of cases) {
     await ui.clickTab(page, c.fname);
@@ -73,5 +81,53 @@ export async function run(t) {
   t.ok(/cannot save as windows-1252/i.test(msgs), `unmappable: toast message mentions encoding (${msgs})`);
   t.ok(readFileSync(w).equals(before), 'unmappable: file bytes untouched');
   t.ok((await ui.tabs(page)).find((x) => x.title === 'unmappable.txt')?.dirty, 'unmappable: tab still dirty');
+
+  // CR-only file: detected as CR, saved unchanged it is byte-identical, an edit keeps CR breaks.
+  await ui.clickTab(page, 'cr-only.txt');
+  t.eq(await ui.eol(page), 'CR', 'cr: status EOL shows CR');
+  t.eq(await ed.doc(page), BASE, 'cr: decoded document has three lines');
+  await ed.focus(page);
+  await page.keyboard.press('Control+s');
+  const crSaved = await waitFor(() => statSync(cr).mtimeMs > new Date('2020-01-02').getTime(), { timeout: 5000, label: 'cr-only.txt rewritten' }).then(() => true, () => false);
+  t.ok(crSaved, 'cr: Ctrl+S rewrote the file');
+  t.ok(readFileSync(cr).equals(crBytes), 'cr: unchanged save is byte-identical');
+  await ed.typeAtEnd(page, 'Z');
+  await page.keyboard.press('Control+s');
+  const crWant = Buffer.from((BASE + 'Z').replace(/\n/g, '\r'), 'utf8');
+  t.ok((await waitBytes(cr, crWant)).equals(crWant), 'cr: edited save keeps CR line breaks');
+  await ui.pickStatus(page, 'End of line', 'LF');
+  t.eq(await ui.eol(page), 'LF', 'cr: picker offers CR -> LF');
+  await ui.pickStatus(page, 'End of line', 'CR');
+  t.eq(await ui.eol(page), 'CR', 'cr: picker offers LF -> CR');
+
+  // Lossy file: persistent notice, and saving asks first (Cancel writes nothing, Save anyway writes U+FFFD).
+  await ui.clickTab(page, 'lossy.txt');
+  t.eq(await ed.doc(page), 'ab�cd\n', 'lossy: invalid byte decoded as U+FFFD');
+  const notice = page.locator('.banner.lossy');
+  t.ok(await notice.isVisible(), 'lossy: notice shown for the tab');
+  const noticeText = await notice.innerText();
+  t.ok(/UTF-8 with BOM/.test(noticeText) && noticeText.includes('�'), `lossy: notice names the encoding and the replacement character (${noticeText})`);
+  await ui.clickTab(page, 'cr-only.txt');
+  t.eq(await page.locator('.banner.lossy').count(), 0, 'lossy: notice is per tab (absent on a clean tab)');
+  await ui.clickTab(page, 'lossy.txt');
+  await ed.focus(page);
+  await page.keyboard.press('Control+s');
+  await ui.dialog(page).waitFor({ timeout: 5000 });
+  t.ok(/replacement characters/.test(await ui.dialog(page).innerText()), 'lossy: save asks before writing replacement characters');
+  await ui.dialogButton(page, 'Cancel').click();
+  await ui.dialog(page).waitFor({ state: 'detached' });
+  await sleep(300);
+  t.ok(readFileSync(lossy).equals(lossyBytes), 'lossy: Cancel leaves the file untouched');
+  await page.keyboard.press('Control+s');
+  await ui.dialog(page).waitFor({ timeout: 5000 });
+  await ui.dialogButton(page, 'Save anyway').click();
+  const lossyWant = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('ab�cd\n', 'utf8')]);
+  t.ok((await waitBytes(lossy, lossyWant)).equals(lossyWant), 'lossy: Save anyway writes U+FFFD as UTF-8, keeping the BOM');
+  await waitFor(async () => (await page.locator('.banner.lossy').count()) === 0, { timeout: 3000, label: 'lossy notice gone' }).catch(() => {});
+  t.eq(await page.locator('.banner.lossy').count(), 0, 'lossy: notice gone after the replacement characters are saved');
+  await page.keyboard.press('Control+s');
+  const askedAgain = await ui.dialog(page).waitFor({ timeout: 1000 }).then(() => true, () => false);
+  t.ok(!askedAgain, 'lossy: asks once per tab');
+
   t.eq(app.consoleErrors.filter((x) => !/write_file failed/.test(x)), [], 'no unexpected console errors');
 }

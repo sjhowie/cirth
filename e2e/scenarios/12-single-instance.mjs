@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { EXE, spawnExe, ui, write, join, waitFor, sleep } from '../lib.mjs';
+import { EXE, spawnExe, isolatedEnv, ui, write, join, waitFor, sleep } from '../lib.mjs';
 
 export const name = '12 single instance';
 
@@ -12,15 +12,14 @@ function runningCount() {
 
 export async function run(t) {
   if (runningCount() > 0) {
-    t.info(`skipped: a ${exeName} process is already running (a test launch would join it instead of starting)`);
-    return;
+    t.skip(`a ${exeName} process is already running; a test launch would join it instead of starting`);
   }
   const dir = t.tmp();
   const f1 = write(join(dir, 'first.txt'), 'first\n');
   const f2 = write(join(dir, 'second.txt'), 'second\n');
   write(join(dir, 'third.txt'), 'third\n');
   const f4 = write(join(dir, 'early.txt'), 'early\n');
-  const env = { ...process.env };
+  const env = isolatedEnv();
   delete env.CIRTH_MULTI_INSTANCE;
 
   // First instance WITHOUT the opt-out env var, so the single-instance plugin is active.

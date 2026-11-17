@@ -141,6 +141,9 @@ export function removeTab(id: number): void {
   const index = tabsStore.tabs.findIndex((t) => t.id === id);
   if (index < 0) return;
   const wasActive = tabsStore.activeId === id;
+  // Snapshot the live view state into the removed tab: anyone still holding the Tab object (a queued
+  // save or prompt) must see its last text through getTabDoc, not the state from when it was activated.
+  if (wasActive && view) tabsStore.tabs[index].state = view.state;
   tabsStore.remove(id);
   if (!wasActive) return;
   const neighbour = tabsStore.tabs[Math.min(index, tabsStore.tabs.length - 1)];

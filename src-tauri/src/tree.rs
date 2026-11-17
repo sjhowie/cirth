@@ -84,17 +84,63 @@ pub fn create_file_sync(path: &Path) -> Result<(), AppError> {
         .map_err(|e| AppError::from_io_at(path, &e))
 }
 
-pub fn rename_sync(from: &Path, to: &Path) -> Result<(), AppError> {
-    if to.exists() {
-        return Err(AppError::io(format!("{}: already exists", to.display())));
+fn already_exists(to: &Path) -> AppError {
+    AppError::io(format!("{}: already exists", to.display()))
+}
+
+/// `from` and `to` name the same file or folder (a case-only rename on Windows).
+#[cfg(windows)]
+fn same_file(from: &Path, to: &Path) -> bool {
+    match (crate::files::win::file_id(from), crate::files::win::file_id(to)) {
+        (Ok(a), Ok(b)) => a.volume == b.volume && a.index == b.index,
+        _ => false,
     }
-    std::fs::rename(from, to).map_err(|e| AppError::from_io_at(from, &e))
+}
+
+#[cfg(unix)]
+fn same_file(from: &Path, to: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (std::fs::symlink_metadata(from), std::fs::symlink_metadata(to)) {
+        (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+        _ => false,
+    }
+}
+
+#[cfg(not(any(windows, unix)))]
+fn same_file(_from: &Path, _to: &Path) -> bool {
+    false
+}
+
+/// Renames without ever replacing another file. Renaming onto the same file (a case-only change
+/// such as `foo.txt` -> `Foo.txt`) is allowed.
+pub fn rename_sync(from: &Path, to: &Path) -> Result<(), AppError> {
+    if same_file(from, to) {
+        return std::fs::rename(from, to).map_err(|e| AppError::from_io_at(from, &e));
+    }
+    #[cfg(windows)]
+    {
+        // No MOVEFILE_REPLACE_EXISTING: an existing target fails inside the call, with no
+        // check-then-act gap.
+        crate::files::win::move_no_replace(from, to).map_err(|e| {
+            if crate::files::win::is_exists(&e) { already_exists(to) } else { AppError::from_io_at(from, &e) }
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        // std has no portable no-replace rename; the check below leaves a small race window.
+        if std::fs::symlink_metadata(to).is_ok() {
+            return Err(already_exists(to));
+        }
+        std::fs::rename(from, to).map_err(|e| AppError::from_io_at(from, &e))
+    }
 }
 
 /// Existing command-line arguments (after the program name), canonicalized without `\\?\`.
 /// Relative arguments are resolved against `base` (the launching process's working directory).
+/// Empty arguments are skipped (`base.join("")` would be the working directory itself). A trailing
+/// `\.` (the installer passes `"%V."` so a drive root is not read as `C:"`) resolves to the folder.
 pub fn startup_paths_from(args: impl Iterator<Item = String>, base: &Path) -> Vec<String> {
-    args.filter_map(|a| {
+    args.filter(|a| !a.trim().is_empty()).filter_map(|a| {
         let p = base.join(&a); // an absolute argument replaces `base`
         if !p.exists() {
             return None;
@@ -262,6 +308,65 @@ mod tests {
         rename_sync(&a, &b).unwrap();
         assert!(b.exists() && !a.exists());
         assert_eq!(rename_sync(&a, &d.path().join("c")).unwrap_err().kind, ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn rename_onto_existing_fails_and_keeps_both() {
+        let d = tempfile::tempdir().unwrap();
+        let (a, b) = (d.path().join("a.txt"), d.path().join("b.txt"));
+        std::fs::write(&a, b"A").unwrap();
+        std::fs::write(&b, b"B").unwrap();
+        let err = rename_sync(&a, &b).unwrap_err();
+        assert_eq!(err.kind, ErrorKind::Io);
+        assert!(err.message.contains("already exists"), "{}", err.message);
+        assert_eq!(std::fs::read(&a).unwrap(), b"A");
+        assert_eq!(std::fs::read(&b).unwrap(), b"B");
+        // Folders too.
+        let (da, db) = (d.path().join("da"), d.path().join("db"));
+        std::fs::create_dir(&da).unwrap();
+        std::fs::create_dir(&db).unwrap();
+        assert!(rename_sync(&da, &db).unwrap_err().message.contains("already exists"));
+        assert!(da.is_dir() && db.is_dir());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn case_only_rename_works() {
+        let d = tempfile::tempdir().unwrap();
+        let from = d.path().join("foo.txt");
+        std::fs::write(&from, b"x").unwrap();
+        rename_sync(&from, &d.path().join("Foo.txt")).unwrap();
+        let names: Vec<_> = std::fs::read_dir(d.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("Foo.txt")]);
+        let dir = d.path().join("sub");
+        std::fs::create_dir(&dir).unwrap();
+        rename_sync(&dir, &d.path().join("SUB")).unwrap();
+        assert!(std::fs::read_dir(d.path()).unwrap().any(|e| e.unwrap().file_name() == "SUB"));
+    }
+
+    #[test]
+    fn startup_paths_skip_empty_and_resolve_trailing_dot() {
+        let d = tempfile::tempdir().unwrap();
+        let base = dunce::canonicalize(d.path()).unwrap();
+        std::fs::create_dir(base.join("dir")).unwrap();
+        let sep = std::path::MAIN_SEPARATOR;
+        let args = vec![String::new(), "  ".to_string(), format!("{}{sep}dir{sep}.", base.display())];
+        let out = startup_paths_from(args.into_iter(), &base);
+        assert_eq!(out, vec![base.join("dir").to_string_lossy().into_owned()]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn startup_paths_drive_root_and_folder_dot() {
+        let d = tempfile::tempdir().unwrap();
+        let base = dunce::canonicalize(d.path()).unwrap();
+        std::fs::create_dir(base.join("dir")).unwrap();
+        // "%V." for a folder background gives `D:\dir.`; Windows drops the trailing dot.
+        let args = vec![format!("{}\\dir.", base.display())];
+        assert_eq!(startup_paths_from(args.into_iter(), &base), vec![base.join("dir").to_string_lossy().into_owned()]);
+        let drive = base.to_string_lossy().chars().take(2).collect::<String>(); // e.g. "C:"
+        let out = startup_paths_from(vec![format!("{drive}\\.")].into_iter(), &base);
+        assert_eq!(out, vec![format!("{drive}\\")]);
     }
 
     #[test]

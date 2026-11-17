@@ -12,7 +12,7 @@ A lightweight desktop text editor in the spirit of Sublime Text and Zed. It's bu
 - Encoding (UTF-8, UTF-8 with BOM, UTF-16 LE/BE, legacy code pages) and line endings (LF/CRLF) are detected, kept on save, and switchable from the status bar.
 - Files of 100 MB and more stay editable. At 10 MB and above (a setting), a file opens in **light mode**, with no highlighting, folding or wrapping.
 - Light, dark or system theme.
-- Updates itself: when a new release is out, the status bar shows "Update to X.Y.Z" (Help → Check for Updates checks now).
+- Updates itself: when a new release is out, the status bar shows "Update to X.Y.Z" (Help → Check for Updates checks now). Help → What's New shows the release notes from [CHANGELOG.md](CHANGELOG.md), and opens once after an update.
 
 No compiling, debugging or extensions; that's on purpose.
 
@@ -52,7 +52,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
-`npm run e2e` runs the real-app suite (13 scenarios). It starts Vite and launches the debug exe (`cargo build` first), then drives WebView2 over its remote-debugging port with `playwright-core` and checks the bytes on disk. The app runs on a hidden Windows desktop, so you can keep working while it runs; set `$env:SE_E2E_VISIBLE = '1'` to watch it. Set `SE_EXE` to an installed exe to test a release build instead. The native Open and Save dialogs aren't covered.
+`npm run e2e` runs the real-app suite (14 scenarios). It starts Vite and launches the debug exe (`cargo build` first), then drives WebView2 over its remote-debugging port with `playwright-core` and checks the bytes on disk. The app runs on a hidden Windows desktop, so you can keep working while it runs; set `$env:SE_E2E_VISIBLE = '1'` to watch it. Set `SE_EXE` to an installed exe to test a release build instead. The native Open and Save dialogs aren't covered. The suite never touches your real settings or WebView2 profile: each run points the app at a temp folder (`CIRTH_CONFIG_DIR`) and deletes it at the end. A scenario that can't run (for example the single-instance one while a Cirth is open) is reported as `SKIP`, not as passed.
 
 ## Install
 
@@ -60,15 +60,17 @@ Download the `_x64-setup.exe` installer (per user, no admin rights) from the [la
 
 ## Release
 
-`package.json` holds the version; `tauri.conf.json` reads it from there. On `dev`, with a clean tree:
+`package.json` holds the version; `tauri.conf.json` reads it from there. Write the release notes first: [CHANGELOG.md](CHANGELOG.md) needs a `## Unreleased` section with at least one item, or the release refuses to start. On `dev`, with a clean tree:
 
 ```powershell
 npm run release -- patch --push    # or minor, major, or an exact X.Y.Z
 ```
 
-That bumps the version in `package.json`, `Cargo.toml` and the lock files, commits `Release vX.Y.Z`, tags it, fast-forwards `main`, and pushes `dev`, `main` and the tag. Without `--push` it stops after the tag and prints the push commands. The tag starts `.github/workflows/release.yml`, which builds the signed installers and `latest.json` on GitHub Actions (about 15 minutes) and publishes the release. The signing key's private half lives only on your machine (`%USERPROFILE%\.tauri\cirth.key`) and in the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Losing it means installed copies can no longer update.
+Before it changes anything it checks that you're on `dev` with a clean tree, that `dev` isn't behind `origin/dev`, that `origin/main` is an ancestor of `dev` (so `main` can fast-forward), and that the changelog has Unreleased items. Then it bumps the version in `package.json`, `Cargo.toml` and the lock files, renames `## Unreleased` to `## X.Y.Z - <today>`, commits `Release vX.Y.Z`, tags it, and with `--push` pushes `dev` and `main` together (`git push --atomic`) and then the tag. Without `--push` it stops after the tag and prints the push commands. If a step fails after the commit exists, it prints the exact commands to retry or undo. The tag starts `.github/workflows/release.yml`. It first checks the tag against `package.json`, then runs vitest, `npm run check` and `cargo test`, and only then builds the signed NSIS installer and `latest.json` on GitHub Actions (about 15 minutes) and publishes the release, with the changelog entry as its notes. The workflow's actions are pinned to commit SHAs.
 
-Build the installers locally (NSIS per-user `.exe` and `.msi`, written to `src-tauri/target/release/bundle/`; unsigned for the updater, which is fine for a local install):
+Only the NSIS installer is built: an MSI would install separately from the per-user NSIS one and then self-update into a second install. The signing key's private half lives only on your machine (`%USERPROFILE%\.tauri\cirth.key`) and in the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Losing it means installed copies can no longer update.
+
+Build the installer locally (the NSIS per-user `.exe`, written to `src-tauri/target/release/bundle/`; unsigned for the updater, which is fine for a local install):
 
 ```powershell
 npm run tauri build

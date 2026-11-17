@@ -1,6 +1,7 @@
 // Shared helpers for the real-app E2E suite (Tauri exe + WebView2, driven over CDP).
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, copyFileSync, statSync } from 'node:fs';
+// RUN_DIR is created at import: lib.mjs is only imported by the runner and its scenarios.
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +14,26 @@ export const USE_CUSTOM_EXE = !!process.env.SE_EXE;
 export const EXE = process.env.SE_EXE ?? join(ROOT, 'src-tauri', 'target', 'debug', 'cirth.exe');
 export const CDP_PORT = 9222;
 export const VITE_PORT = 1420;
-export const SETTINGS_FILE = join(process.env.APPDATA ?? '', 'io.github.sjhowie.cirth', 'settings.json');
+/**
+ * Per-run scratch folder, created when the suite starts and deleted by cleanupRun(). It holds the app's settings
+ * (CIRTH_CONFIG_DIR, so the tests never touch the real %APPDATA% settings) and the WebView2 profile.
+ */
+const RUN_DIR = mkdtempSync(join(tmpdir(), 'cirth-e2e-run-'));
+export const CONFIG_DIR = join(RUN_DIR, 'config');
+export const SETTINGS_FILE = join(CONFIG_DIR, 'settings.json');
+const WEBVIEW2_DIR = join(RUN_DIR, 'webview2');
+
+/** Environment every test launch gets: isolated settings, no GitHub update checks. */
+export const isolatedEnv = (extra = {}) => ({ ...process.env, CIRTH_CONFIG_DIR: CONFIG_DIR, CIRTH_NO_UPDATE_CHECK: '1', ...extra });
+
+/** Deletes the run folder. Call once at the end of the run, after every app is closed. */
+export function cleanupRun() {
+  try {
+    rmSync(RUN_DIR, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  } catch (e) {
+    console.error(`warn: could not delete ${RUN_DIR}: ${e.message}`);
+  }
+}
 
 /**
  * The app runs on a hidden Windows desktop (`deskrun.cs`), so test windows never reach the user's screen or take focus.
@@ -115,23 +135,7 @@ export function stopVite() {
 
 // ---------- Settings isolation ----------
 
-let settingsBackup = null; // null = file did not exist
-let settingsBackedUp = false;
-
-export function backupSettings() {
-  if (settingsBackedUp) return;
-  settingsBackedUp = true;
-  settingsBackup = existsSync(SETTINGS_FILE) ? readFileSync(SETTINGS_FILE) : null;
-}
-
-export function restoreSettings() {
-  if (!settingsBackedUp) return;
-  settingsBackedUp = false;
-  if (settingsBackup === null) rmSync(SETTINGS_FILE, { force: true });
-  else writeFileSync(SETTINGS_FILE, settingsBackup);
-}
-
-/** Writes settings.json (or removes it when `settings` is null) so a launch starts from known state. */
+/** Writes settings.json in the run's config dir (or removes it when `settings` is null) so a launch starts from known state. */
 export function writeSettings(settings) {
   if (settings === null) {
     rmSync(SETTINGS_FILE, { force: true });
@@ -172,23 +176,40 @@ export function processTreeMemory(pid) {
 // ---------- App launch ----------
 
 /**
+ * Fails fast when something already answers on the CDP port: Playwright would attach to that process (another
+ * suite run, or any WebView2 app started with a debugging port) and drive the wrong app. Retries briefly so a
+ * just-killed previous launch has time to release the port.
+ */
+async function assertCdpPortFree() {
+  const url = `http://127.0.0.1:${CDP_PORT}/json/version`;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      await httpGet(url);
+    } catch {
+      return; // nothing listening: free
+    }
+    await sleep(500);
+  }
+  throw new Error(`Something already answers on CDP port ${CDP_PORT} (another E2E run, or an app started with --remote-debugging-port=${CDP_PORT}); stop it first. One E2E run at a time.`);
+}
+
+/**
  * Launches the debug exe with a CDP port, connects, waits for the editor shell.
  * Returns { page, pid, close(), exited(), logs() }.
  */
 export async function launchApp({ args = [], multiInstance = true } = {}) {
   if (!existsSync(EXE)) throw new Error(`Missing ${EXE}; run cargo build in src-tauri first.`);
+  await assertCdpPortFree();
   const proc = spawn(DESKRUN ?? EXE, DESKRUN ? ['run', DESKTOP, EXE, ...args] : args, {
     // MULTI_INSTANCE: the single-instance plugin would swallow this launch into any Cirth the user has open.
     // Only the single-instance scenario passes multiInstance: false.
     // USER_DATA_FOLDER: a running Cirth holds the default WebView2 profile, and WebView2 refuses a second
-    // process on that profile with different browser arguments (0x8007139F).
-    env: {
-      ...process.env,
+    // process on that profile with different browser arguments (0x8007139F). A fresh folder per run (deleted by cleanupRun).
+    env: isolatedEnv({
       ...(multiInstance ? { CIRTH_MULTI_INSTANCE: '1' } : {}),
-      CIRTH_NO_UPDATE_CHECK: '1', // no GitHub calls from tests
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}`,
-      WEBVIEW2_USER_DATA_FOLDER: join(tmpdir(), 'se-e2e-webview2'),
-    },
+      WEBVIEW2_USER_DATA_FOLDER: WEBVIEW2_DIR,
+    }),
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: false,
   });

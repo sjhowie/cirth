@@ -97,5 +97,27 @@ export async function run(t) {
   await waitFor(async () => (await ui.tabs(page)).length === 1, { label: 'c.txt closed after Save', timeout: 5000 }).catch(() => {});
   t.ok(readFileSync(files[2], 'utf8').endsWith('c line 300C1'), 'Save from the prompt writes the file');
   t.eq((await ui.tabs(page)).map((x) => x.title), ['a.txt'], 'tab closed after Save');
+
+  // Ctrl+W twice, Save in every prompt that shows: the edited text must reach the disk, never the
+  // text from when the tab was opened (a second prompt used to write that over the first save).
+  await ui.clickTab(page, 'a.txt');
+  await ed.typeAtEnd(page, 'Q1');
+  const aWant = await ed.doc(page);
+  t.ok(aWant.endsWith('Q1'), 'a.txt edited before the double close');
+  await page.keyboard.press('Control+w');
+  await ui.dialog(page).waitFor();
+  await page.keyboard.press('Control+w');
+  let prompts = 0;
+  for (let i = 0; i < 2; i++) {
+    const shown = await ui.dialog(page).waitFor({ timeout: 1500 }).then(() => true, () => false);
+    if (!shown) break;
+    prompts++;
+    await ui.dialogButton(page, 'Save').first().click();
+    await sleep(300);
+  }
+  t.eq(prompts, 1, 'the second Ctrl+W while the prompt is open does not queue another prompt');
+  await waitFor(async () => (await ui.tabs(page)).every((x) => x.title !== 'a.txt'), { label: 'a.txt closed', timeout: 5000 }).catch(() => {});
+  t.ok((await ui.tabs(page)).every((x) => x.title !== 'a.txt'), 'a.txt closed after Save');
+  t.eq(readFileSync(files[0], 'utf8'), aWant, 'a.txt on disk has the edited text after Ctrl+W twice and Save');
   t.eq(app.consoleErrors, [], 'no console errors');
 }

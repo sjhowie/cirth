@@ -25,7 +25,9 @@
     if (e.key === "Escape") {
       e.stopPropagation();
       onclose();
-    } else if (e.key === "Enter" && shown.length > 0) {
+    } else if (e.key === "Enter" && !e.isComposing && shown.length > 0) {
+      // Enter on a focused item button is handled by that button's own click.
+      if ((e.target as HTMLElement).closest("button.item")) return;
       onpick(shown[0]);
     }
   }

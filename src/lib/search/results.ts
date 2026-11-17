@@ -106,10 +106,6 @@ export function locateMatch(lineText: string, item: SearchItem): { col: number; 
   const { before, match } = splitPreview(item.preview, item.col, item.matchLen);
   const at = lineText.indexOf(item.preview);
   if (at >= 0) return { col: at + before.length + 1, len: match.length };
-  // The line changed since the search; fall back to the first occurrence of the matched text.
-  if (match.length > 0) {
-    const i = lineText.indexOf(match);
-    if (i >= 0) return { col: i + 1, len: match.length };
-  }
+  // The line changed since the search: no guessing, the caller tells the user to search again.
   return null;
 }

@@ -12,6 +12,14 @@
     <button class="btn" onclick={() => keepMine(tab)}>Keep mine</button>
   </div>
 {/if}
+{#if tab?.lossy}
+  <div class="banner lossy" role="status">
+    <span>
+      This file contains bytes that aren't valid {tab.lossy}; they were replaced with "{"�"}". Saving writes
+      the replacement characters.
+    </span>
+  </div>
+{/if}
 
 <style>
   .banner {

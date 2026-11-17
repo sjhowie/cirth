@@ -31,22 +31,39 @@ also for a plain `fetch`). Raw *responses* are not affected. So any raw request 
   order, consumed and freed by that call (success or error). Unknown id → `invalidArg`.
 - Chunks are cut on UTF-8 boundaries by the frontend (encode the string in slices that never split a
   surrogate pair), so no slice needs a full-document copy. Rust treats the concatenation as bytes.
-- Staged uploads not consumed within 10 minutes are dropped. Frontend calls `upload_discard` on any
-  failure between begin and the consuming call.
+- A staged upload idle for 10 minutes (no chunk added, not consumed) is dropped. The sweep runs on
+  every `upload_begin`, `upload_chunk` and consuming call, so a stale upload never sits in memory
+  for the rest of the session. Frontend calls `upload_discard` on any failure between begin and the
+  consuming call.
 
 ## Files
 | Command | Kind | Input | Output |
 |---|---|---|---|
 | `read_file` | raw response | `{ path }` | `[u32 LE metaLen][meta JSON, UTF-8][text, UTF-8]` |
-| `write_file` | raw request | body = text as UTF-8 with `\n` line breaks; headers `x-path`, `x-encoding`, `x-bom` (`1`/`0`), `x-eol` (`lf`/`crlf`) | `{ size: number }` |
+| `write_file` | raw request | body = text as UTF-8 with `\n` line breaks; headers `x-path`, `x-encoding`, `x-bom` (`1`/`0`), `x-eol` (`lf`/`crlf`/`cr`) | `{ size: number }` |
 
-`meta` = `{ encoding: string, bom: boolean, eol: "lf" | "crlf", size: number }`
+`meta` = `{ encoding: string, bom: boolean, eol: "lf" | "crlf" | "cr", size: number, lossy: boolean }`
 - `encoding`: `utf-8`, `utf-16le`, `utf-16be`, or an `encoding_rs` label (e.g. `windows-1252`).
   Detection: BOM first, else valid UTF-8 → `utf-8`, else `chardetng`.
-- `eol`: style of the first line break; `lf` if none. Text is returned as-is (CodeMirror normalizes).
-- `write_file` converts `\n` to the requested EOL, encodes, prepends a BOM if `x-bom=1`, and writes
-  atomically (temp file in the same dir, then rename). Characters the target encoding cannot
-  represent → `AppError{kind:"encoding"}`; never write numeric character references.
+- `eol`: style of the first line break (`cr` = a lone `\r`, classic Mac OS); `lf` if none. Text is
+  returned as-is (CodeMirror normalizes).
+- `lossy` (always present): some bytes were not valid in `encoding` (a BOM'd file with invalid
+  UTF-8, odd-length or lone-surrogate UTF-16, invalid sequences in a detected legacy encoding) and
+  were decoded as U+FFFD. Saving the text writes U+FFFD in their place, so the frontend warns and
+  asks before saving a lossy tab.
+- `write_file` converts `\n` to the requested EOL, encodes, prepends a BOM if `x-bom=1`, and saves:
+  - A symlink is followed: its target is written and the link stays a link.
+  - A new file: temp file in the same folder, then rename.
+  - An existing file on Windows: temp file in the same folder, then `ReplaceFileW`, which keeps the
+    file's ACLs, attributes (hidden, system), creation time and alternate data streams (e.g.
+    `Zone.Identifier`). A file with more than one hard link is written in place (open, write,
+    truncate, sync) so the links stay joined. When the replace is refused (access denied, or the file
+    is open in another process without delete sharing) it is also written in place, with a logged
+    warning. In-place writes are not atomic.
+  - An existing file elsewhere: temp file given the original permissions, then rename.
+  - Read-only files and folders → `io` error, file untouched.
+  Characters the target encoding cannot represent → `AppError{kind:"encoding"}`; never write
+  numeric character references. The work runs on a blocking thread, not an async worker.
 
 ## Formatting
 | Command | Kind | Input | Output |
@@ -63,9 +80,9 @@ Invalid input → `AppError{kind:"parse", message, line, col}`; output is never 
 | `list_files` | `{ root }` | `{ files: string[], truncated: boolean }` — root-relative, `/`-separated, honours `.gitignore`, cap 50 000 |
 | `create_file` | `{ path }` | `()` — fails if it exists |
 | `create_dir` | `{ path }` | `()` |
-| `rename_path` | `{ from, to }` | `()` — fails if `to` exists |
+| `rename_path` | `{ from, to }` | `()` — fails (`io`, "already exists") if `to` is another existing file or folder; never replaces it (Windows: `MoveFileExW` without `MOVEFILE_REPLACE_EXISTING`, so the check is atomic; elsewhere a check then rename). A case-only rename (`foo.txt` → `Foo.txt`, same file) is allowed |
 | `trash_path` | `{ path }` | `()` — OS recycle bin (`trash` crate) |
-| `get_startup_paths` | `{}` | `string[]` — existing command-line paths, absolute (relative ones resolved against the working directory), followed by paths queued by second launches that arrived early. Also the frontend's "ready" signal: call it once, after subscribing to `app://open-paths` |
+| `get_startup_paths` | `{}` | `string[]` — existing command-line paths, absolute (relative ones resolved against the working directory), followed by paths queued by second launches that arrived early. Empty arguments are skipped; `C:\.` / `D:\dir\.` / `D:\dir.` resolve to `C:\` / `D:\dir`. Also the frontend's "ready" signal: call it once, after subscribing to `app://open-paths` |
 
 ## Watching
 | Command | Input | Output |
@@ -92,8 +109,9 @@ instance and exits.
 - Opt-out: environment variable `CIRTH_MULTI_INSTANCE=1` skips the plugin, so several
   instances can run side by side. The E2E launcher sets it, except scenario `12-single-instance`.
 - Installers add an Explorer context-menu entry "Open with Cirth" (files, folders, folder
-  background) that runs `cirth.exe "%1"` (`"%V"` for the background): NSIS per user under
-  `HKCU\Software\Classes`, MSI per machine under `HKLM\Software\Classes` (see `src-tauri/windows/`).
+  background) that runs `cirth.exe "%1"` (`"%V."` for the background, so a drive root arrives as `C:\.`
+  rather than `C:\"`, which the quoting would break): the NSIS installer (the only bundle target) writes
+  them per user under `HKCU\Software\Classes` (see `src-tauri/windows/hooks.nsh`).
 
 ## Folder search / replace
 | Command | Input | Output |
@@ -109,6 +127,15 @@ instance and exits.
 - Event `search://done` `{ searchId, files, matches, truncated, cancelled }`; cap 10 000 matches.
 - `replace_in_folder` touches only `paths`, re-reads each with `read_file` semantics and writes back
   with its original encoding/BOM/EOL. With `regex`, `$1` etc. expand in `replacement`.
+- Replace runs the pattern line by line, on the same units the search matches: each line without
+  its terminator (`\n` or `\r\n`; `\r` in `cr` files). Terminators are kept byte for byte, so a
+  pattern such as `\s+$` never joins lines, and the counts agree with the search results.
+- A file with matches whose read was `lossy` is not rewritten: `encoding` error "<path>: contains
+  bytes that are not valid <encoding>; open and save it in the editor instead".
+- `wholeWord` wraps the pattern in `\b{start-half}…\b{end-half}`: no word character just before or
+  just after the match, so queries with non-word edges work (`foo(` matches in `x foo( y`, not in
+  `xfoo( y`).
+- Cancel is checked before every read of a file, not only at matches and between files.
 
 ## Behaviour notes (as implemented)
 - Missing headers: `x-encoding` → `utf-8`, `x-bom` → `0`, `x-eol` → `lf`, `x-mode` → `pretty`,
@@ -118,19 +145,27 @@ instance and exits.
 - Encoding detection sees the first 1 MiB; UTF-16 without a BOM is not detected.
 - XML: whitespace-only content of an otherwise empty element is dropped (`<a> </a>` → `<a></a>`);
   CDATA counts as text for mixed-content detection; no DTD/entity validation.
+- XML: whitespace-only text between elements is treated as insignificant, as XML pretty-printers do,
+  even between inline siblings: minify turns `<p><b>x</b> <i>y</i></p>` into
+  `<p><b>x</b><i>y</i></p>`. An element with non-whitespace text of its own (`<p>a <b>x</b> <i>y</i></p>`)
+  is copied verbatim. Use `xml:space="preserve"` to keep the whitespace.
+- XML errors (`parse`, with line:col): malformed attributes (`<a b=1/>`), duplicate attributes
+  (`<a b="1" b="2"/>`), and bad entity syntax in text or attribute values (a bare `&`, a missing
+  `;`, a bad character reference). Unknown named entities (`&custom;`) are accepted, since a DTD may
+  declare them.
 - Search: empty query → `invalidArg`; bad regex or missing root fails synchronously; regexes that
   can only match across a newline → `parse`; legacy-encoded (non-UTF-8/16) files are searched as raw
   bytes, so non-ASCII queries won't match them; `include` is a filter that never un-ignores
   `.gitignore`d files.
-- `replace_in_folder`: `root` unused; stops at the first file error (earlier files stay written);
-  keeps each file's EOLs.
+- `replace_in_folder`: `root` unused; stops at the first file error, including a lossy file
+  (earlier files stay written); keeps each file's EOLs.
 - `watch_paths`: unwatchable paths are logged and skipped. `cancelled` errors are never returned;
   cancellation shows in `search://done`.
 
 ## Settings
 | Command | Input | Output |
 |---|---|---|
-| `load_settings` | `{}` | `Settings` (defaults if file missing or invalid; invalid file is logged, not overwritten) |
+| `load_settings` | `{}` | `Settings` (see loading rules below) |
 | `save_settings` | `{ settings }` | `()` |
 
 `Settings` = `{ theme: "system"|"light"|"dark", fontFamily: string, fontSize: number,
@@ -139,6 +174,15 @@ Defaults: `system`, `"Cascadia Code, Consolas, Menlo, monospace"`, `14`, `"2"`, 
 Stored as `settings.json` in the Tauri app config dir (`%APPDATA%\io.github.sjhowie.cirth` on Windows). On the first
 start after the rename from SimpleEditor, `migrate.rs` copies `settings.json` and the WebView2 Local Storage from the old
 `com.simpleeditor.app` folders, once, and leaves the old folders alone.
+
+- Override: when the environment variable `CIRTH_CONFIG_DIR` is set and non-empty, `settings.json` lives in that folder
+  instead (E2E isolation), and the `migrate.rs` carry-over is skipped entirely.
+- Loading: a missing file gives the defaults. Each field is read on its own: a missing field takes its default, and an
+  invalid value (`"theme":"Dark"`, `"indent":3`, `"fontSize":"14"`) takes its default and is logged, without resetting the
+  other fields. A file that is not a JSON object (not JSON at all, or e.g. `[1]`) gives all defaults and is logged; load
+  never writes it.
+- Saving: if the existing file is not a JSON object, it is first copied to `settings.json.bad` (replacing an older copy),
+  then overwritten. Fields that were invalid are saved with their defaults.
 
 **Startup theme (no white flash).** Rust creates the main window itself (`"create": false` in `tauri.conf.json`). It loads the
 settings first, builds the window hidden, sets the window and WebView2 background to the theme's editor color (`#282c34`
@@ -150,8 +194,12 @@ to the `theme` setting before any page script runs. `app.html` uses it to set `d
 
 ## Updates
 
-No custom commands: the frontend (`updater.svelte.ts`) uses `tauri-plugin-updater` (`check`, `downloadAndInstall`) and
-`tauri-plugin-process` (`relaunch`), with capabilities `updater:default` and `process:allow-restart`.
+No custom commands: the frontend (`updater.svelte.ts`) uses `tauri-plugin-updater` (`check`, then `download` and `install`
+as separate steps) and `tauri-plugin-process` (`relaunch`), with capabilities `updater:default` and `process:allow-restart`.
+
+- Install order: the user confirms, the update downloads (progress in the status bar), then the unsaved-files prompt
+  runs, settings are flushed, and only then `install` starts the installer. Cancelling the unsaved-files prompt keeps the
+  download and the status-bar offer, so a later click installs without downloading again.
 
 - Endpoint: `https://github.com/sjhowie/cirth/releases/latest/download/latest.json`, written by the release workflow
   (`.github/workflows/release.yml`). Installers are verified against `plugins.updater.pubkey` in `tauri.conf.json`.

@@ -6,6 +6,7 @@ import { registerCommand, setCommandErrorHandler } from "./commands";
 import { getView } from "./editorHost.svelte";
 import { closeActiveTab, newTab, openFilesDialog, openFolderDialog, saveAll, saveTab, saveTabAs } from "./files";
 import { formatActiveDocument } from "./format";
+import { openAbout, openChangelog } from "./helpDialogs.svelte";
 import { layout } from "./layout.svelte";
 import { reportError } from "./notifications.svelte";
 import { settings, updateSettings } from "./settings.svelte";
@@ -24,7 +25,10 @@ function withView(fn: (v: EditorView) => unknown): () => void {
 export function registerAppCommands(): void {
   setCommandErrorHandler(reportError);
 
+  // Help (menu order: What's New, Check for Updates, About)
+  registerCommand({ id: "help.changelog", label: "What's New", category: "Help", run: openChangelog });
   registerCommand({ id: "help.checkForUpdates", label: "Check for Updates…", category: "Help", run: () => checkForUpdate(true) });
+  registerCommand({ id: "help.about", label: "About Cirth", category: "Help", run: openAbout });
 
   // File
   registerCommand({ id: "file.new", label: "New File", category: "File", keys: ["Mod-n"], run: () => void newTab() });
@@ -62,7 +66,7 @@ export function registerAppCommands(): void {
   // No default keys: Shift+Alt+Up/Down is box selection (columnSelect.ts).
   registerCommand({ id: "edit.copyLineUp", label: "Copy Line Up", category: "Edit", run: withView(copyLineUp) });
   registerCommand({ id: "edit.copyLineDown", label: "Copy Line Down", category: "Edit", run: withView(copyLineDown) });
-  registerCommand({ id: "edit.gotoLine", label: "Go to Line…", category: "Edit", hintKeys: ["Alt-g"], run: withView(gotoLine) });
+  registerCommand({ id: "edit.gotoLine", label: "Go to Line…", category: "Edit", hintKeys: ["Mod-Alt-g"], run: withView(gotoLine) });
 
   // View
   registerCommand({

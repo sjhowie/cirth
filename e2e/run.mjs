@@ -1,5 +1,7 @@
 // Real-app E2E runner: starts Vite, runs each scenario against the debug exe over CDP, always cleans up.
 // Usage: npm run e2e [-- <scenario-number-or-name-substring> ...]
+// Settings live in a per-run temp folder (CIRTH_CONFIG_DIR), so the user's real settings are never read or changed.
+// A scenario can end with t.skip(reason): reported as SKIP, not counted as passed, exit code stays 0.
 // SE_EXE=<path to exe>: test that exe instead of the debug exe, and do not start Vite (release builds bundle the frontend).
 //   e.g. $env:SE_EXE = "$env:LOCALAPPDATA\Cirth\cirth.exe"; npm run e2e
 import { readdirSync, mkdirSync } from 'node:fs';
@@ -7,8 +9,11 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 import {
-  backupSettings, restoreSettings, startVite, stopVite, launchApp, makeTmp, rmSync, writeSettings, EXE, USE_CUSTOM_EXE, existsSync,
+  cleanupRun, startVite, stopVite, launchApp, makeTmp, rmSync, writeSettings, EXE, USE_CUSTOM_EXE, existsSync,
 } from './lib.mjs';
+
+/** Thrown by t.skip(reason): ends the scenario as skipped (not passed, not failed). */
+class SkipSignal extends Error {}
 
 const here = dirname(fileURLToPath(import.meta.url));
 const filters = process.argv.slice(2);
@@ -36,6 +41,10 @@ function makeContext(name) {
       return t.ok(true, label);
     },
     info: (msg) => console.log(`    ${msg}`),
+    /** Ends the scenario as skipped (reported as SKIP with the reason, exit code unaffected). Throws; code after it never runs. */
+    skip(reason) {
+      throw new SkipSignal(reason);
+    },
     tmp() {
       const d = makeTmp();
       tmps.push(d);
@@ -79,7 +88,6 @@ async function main() {
   const selected = files.filter((f) => filters.length === 0 || filters.some((x) => f.toLowerCase().includes(x.toLowerCase()) || f.startsWith(x.padStart(2, '0'))));
   if (selected.length === 0) throw new Error(`No scenario matches ${filters.join(', ')}`);
 
-  backupSettings();
   if (!USE_CUSTOM_EXE) await startVite();
   const results = [];
   for (const file of selected) {
@@ -89,26 +97,38 @@ async function main() {
     const { t, checks, cleanup } = makeContext(name);
     const started = Date.now();
     let error = null;
+    let skipped = null;
     try {
       await mod.run(t);
     } catch (e) {
-      error = e;
-      console.log(`    error - ${e.stack ?? e.message}`);
-      for (const a of apps) {
-        await a.shot?.('error');
-        console.log(`    app exited: ${a.exited()} (code ${a.exitCode()}); app log tail:
+      if (e instanceof SkipSignal) {
+        skipped = e.message;
+      } else {
+        error = e;
+        console.log(`    error - ${e.stack ?? e.message}`);
+        for (const a of apps) {
+          await a.shot?.('error');
+          console.log(`    app exited: ${a.exited()} (code ${a.exitCode()}); app log tail:
 ${a.logs().slice(-1500)}`);
+        }
       }
     } finally {
       await cleanup();
     }
-    const ok = error === null && checks.fail.length === 0;
     const secs = ((Date.now() - started) / 1000).toFixed(1);
+    if (skipped !== null && error === null && checks.fail.length === 0) {
+      console.log(`SKIP ${name} (${skipped})`);
+      results.push({ name, ok: true, skipped: true });
+      continue;
+    }
+    const ok = error === null && checks.fail.length === 0;
     console.log(`${ok ? 'PASS' : 'FAIL'} ${name} (${checks.pass} checks passed, ${checks.fail.length} failed${error ? ', threw' : ''}, ${secs}s)`);
     results.push({ name, ok });
   }
   const failed = results.filter((r) => !r.ok);
-  console.log(`\n${results.length - failed.length}/${results.length} scenarios passed`);
+  const skippedCount = results.filter((r) => r.skipped).length;
+  const passed = results.length - failed.length - skippedCount;
+  console.log(`\n${passed}/${results.length} passed${skippedCount ? `, ${skippedCount} skipped` : ''}${failed.length ? `, ${failed.length} failed` : ''}`);
   for (const f of failed) console.log(`  FAILED: ${f.name}`);
   console.log(`(screenshots on error: ${shotDir})`);
   return failed.length === 0 ? 0 : 1;
@@ -122,10 +142,6 @@ try {
 } finally {
   for (const a of apps) await a.close().catch(() => {});
   stopVite();
-  try {
-    restoreSettings();
-  } catch (e) {
-    console.error(`could not restore settings: ${e.message}`);
-  }
+  cleanupRun(); // after the apps are closed: deletes the run's config dir and WebView2 profile
 }
 process.exit(code);

@@ -20,7 +20,7 @@
 
   function onEditKey(e: KeyboardEvent, commit: (name: string) => void): void {
     e.stopPropagation();
-    if (e.key === "Enter") commit((e.currentTarget as HTMLInputElement).value);
+    if (e.key === "Enter" && !e.isComposing) commit((e.currentTarget as HTMLInputElement).value);
     else if (e.key === "Escape") cancelEdit();
   }
 

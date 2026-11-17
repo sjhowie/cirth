@@ -40,6 +40,17 @@ describe("parseReadFileResponse", () => {
     expect(r.meta.eol).toBe("lf");
   });
 
+  it("parses CR line endings and the lossy flag", () => {
+    const r = parseReadFileResponse(buildResponse({ ...meta, eol: "cr", lossy: true }, "a\rb�"));
+    expect(r.meta).toMatchObject({ eol: "cr", lossy: true });
+    expect(r.text).toBe("a\rb�");
+  });
+
+  it("treats a missing or non-true lossy as a clean decode", () => {
+    expect(parseReadFileResponse(buildResponse(meta, "x")).meta.lossy).toBe(false);
+    expect(parseReadFileResponse(buildResponse({ ...meta, lossy: "yes" }, "x")).meta.lossy).toBe(false);
+  });
+
   it("keeps a literal U+FEFF in the text", () => {
     expect(parseReadFileResponse(buildResponse(meta, "\uFEFFx")).text).toBe("\uFEFFx");
   });
@@ -59,6 +70,10 @@ describe("header encoding", () => {
     expect(h["x-path"]).toMatch(/^[\x20-\x7e]+$/);
     expect(decodeURIComponent(h["x-path"])).toBe("C:\\My Docs\\naïve 日本.txt");
     expect(h).toMatchObject({ "x-encoding": "utf-8", "x-bom": "1", "x-eol": "crlf" });
+  });
+
+  it("sends CR line endings as x-eol: cr", () => {
+    expect(buildWriteHeaders("a.txt", { encoding: "utf-8", bom: false, eol: "cr" })["x-eol"]).toBe("cr");
   });
 });
 

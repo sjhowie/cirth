@@ -1,7 +1,8 @@
 # Builds and publishes a release when a vX.Y.Z tag is pushed (npm run release -- <bump> --push).
-# The release carries the signed NSIS and MSI installers plus latest.json, which the in-app updater reads from
-# https://github.com/sjhowie/cirth/releases/latest/download/latest.json.
+# The release carries the signed NSIS installer plus latest.json, which the in-app updater reads from
+# https://github.com/sjhowie/cirth/releases/latest/download/latest.json. The release notes come from CHANGELOG.md.
 # Needs repository secrets TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD (from `tauri signer generate`).
+# Every action is pinned to a commit SHA (the comment names the release); bump them deliberately.
 name: Release
 
 on:
@@ -14,23 +15,51 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version v$version"
+            exit 1
+          fi
 
-      - uses: swatinem/rust-cache@v2
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        run: |
+          node scripts/changelog-notes.mjs "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/notes.md"
+          {
+            echo 'body<<CHANGELOG_NOTES_EOF'
+            cat "$RUNNER_TEMP/notes.md"
+            echo 'CHANGELOG_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+
+      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: "./src-tauri -> target"
 
       - run: npm ci
 
-      - uses: tauri-apps/tauri-action@v0
+      # Gate: nothing is published unless these pass.
+      - run: npx vitest run
+      - run: npm run check
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -38,9 +67,8 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Cirth ${{ github.ref_name }}
-          releaseBody: See the commits since the previous release for what changed.
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
           # Updater artifacts (signatures) only in CI, so local `npm run tauri build` needs no signing key.
           args: --config src-tauri/tauri.updater.conf.json
-          updaterJsonPreferNsis: true

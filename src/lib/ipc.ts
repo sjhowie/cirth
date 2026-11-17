@@ -97,13 +97,15 @@ const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
 // ---------- files ----------
 
-export type Eol = "lf" | "crlf";
+export type Eol = "lf" | "crlf" | "cr";
 
 export interface FileMeta {
   encoding: string;
   bom: boolean;
   eol: Eol;
   size: number;
+  /** The file had bytes invalid for `encoding`; they were decoded as U+FFFD. */
+  lossy: boolean;
 }
 
 export interface ReadFileResult {
@@ -118,9 +120,10 @@ export function parseReadFileResponse(buf: ArrayBuffer): ReadFileResult {
   if (4 + metaLen > buf.byteLength) {
     throw { kind: "io", message: "Malformed read_file response (meta length out of range)" } satisfies AppError;
   }
-  const meta = JSON.parse(decoder.decode(new Uint8Array(buf, 4, metaLen))) as FileMeta;
+  const raw = JSON.parse(decoder.decode(new Uint8Array(buf, 4, metaLen))) as Omit<FileMeta, "lossy"> & { lossy?: unknown };
   const text = decoder.decode(new Uint8Array(buf, 4 + metaLen));
-  return { meta, text };
+  // `lossy` is only ever `true` when the backend says so; a missing field means a clean decode.
+  return { meta: { ...raw, lossy: raw.lossy === true }, text };
 }
 
 export async function readFile(path: string): Promise<ReadFileResult> {

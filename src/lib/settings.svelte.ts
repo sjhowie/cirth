@@ -49,3 +49,15 @@ export function updateSettings(patch: Partial<Settings>): void {
     saveSettings({ ...settings }).catch((e) => reportError("Save settings", e));
   }, 400);
 }
+
+/** Writes a debounced settings change now (before the window closes or an update installs). Never throws. */
+export async function flushSettings(): Promise<void> {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  try {
+    await saveSettings({ ...settings });
+  } catch (e) {
+    reportError("Save settings", e);
+  }
+}

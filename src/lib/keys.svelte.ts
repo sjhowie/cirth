@@ -3,6 +3,7 @@
  * (the event is stopped before it reaches the editor); everything unbound falls through.
  */
 import { listCommands, runCommand } from "./commands";
+import { dialogs } from "./dialogs.svelte";
 import { eventToStroke, formatBinding, KeyResolver } from "./keybindings";
 import { isMac } from "./platform";
 
@@ -17,10 +18,33 @@ function clearHint(): void {
   hintTimer = null;
 }
 
+/** Keys a modal dialog handles itself (Modal.svelte and its focused buttons); never swallowed. */
+const dialogKeys = new Set(["Escape", "Enter", " ", "Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
+
+/**
+ * While a modal dialog is open no app command runs: a second Ctrl+W or Ctrl+S would otherwise act on
+ * tabs behind the prompt. Bound shortcuts are swallowed (so the WebView's own Ctrl+S etc. don't run
+ * either); the dialog's own keys and unbound keys pass through.
+ */
+function onKeyDownInDialog(e: KeyboardEvent, stroke: string): void {
+  resolver.reset();
+  clearHint();
+  if (dialogKeys.has(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) return;
+  const result = resolver.handle(stroke, Date.now());
+  resolver.reset();
+  if (result.type === "none") return;
+  e.preventDefault();
+  e.stopPropagation();
+}
+
 function onKeyDown(e: KeyboardEvent): void {
   if (e.isComposing) return;
   const stroke = eventToStroke(e, isMac);
   if (stroke === null) return;
+  if (dialogs.queue.length > 0) {
+    onKeyDownInDialog(e, stroke);
+    return;
+  }
   const result = resolver.handle(stroke, Date.now());
   switch (result.type) {
     case "none":

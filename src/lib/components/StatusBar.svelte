@@ -1,7 +1,7 @@
 <script lang="ts">
   import { status } from "$lib/editorHost.svelte";
   import { listLanguageNames } from "$lib/editor/languages";
-  import { encodingChoices, encodingLabel } from "$lib/encodings";
+  import { encodingChoices, encodingLabel, eolChoices, eolFromLabel, eolLabel } from "$lib/encodings";
   import { setTabEncoding, setTabEol, setTabLanguage } from "$lib/files";
   import { reportError } from "$lib/notifications.svelte";
   import { chordHint } from "$lib/keys.svelte";
@@ -38,7 +38,12 @@
 
   function pickEol(label: string): void {
     open = null;
-    if (tab) setTabEol(tab, label === "CRLF" ? "crlf" : "lf");
+    const eol = eolFromLabel(label);
+    if (!eol) {
+      reportError("Set line ending", new Error(`Unknown line ending ${label}`));
+      return;
+    }
+    if (tab) setTabEol(tab, eol);
   }
 </script>
 
@@ -64,9 +69,9 @@
         {settings.indent === "tab" ? "Tabs" : `Spaces: ${settings.indent}`}
       </button>
       <span class="anchor">
-        <button class="item" title="End of line (applies on next save)" onclick={(e) => toggle("eol", e)}>{tab.eol.toUpperCase()}</button>
+        <button class="item" title="End of line (applies on next save)" onclick={(e) => toggle("eol", e)}>{eolLabel(tab.eol)}</button>
         {#if open === "eol"}
-          <Picker items={["LF", "CRLF"]} current={tab.eol.toUpperCase()} onpick={pickEol} onclose={() => (open = null)} />
+          <Picker items={Object.keys(eolChoices)} current={eolLabel(tab.eol)} onpick={pickEol} onclose={() => (open = null)} />
         {/if}
       </span>
       <span class="anchor">

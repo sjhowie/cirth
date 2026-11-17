@@ -1,5 +1,4 @@
 import { ui, write, join, readFileSync, existsSync, writeSettings, SETTINGS_FILE, ROOT, waitFor, sleep } from '../lib.mjs';
-import { writeFileSync } from 'node:fs';
 
 export const name = '11 settings';
 
@@ -46,7 +45,7 @@ export async function run(t) {
   await thr.blur();
 
   await waitFor(() => existsSync(SETTINGS_FILE) && read().largeFileThresholdMb === 25, { timeout: 4000, label: 'settings.json written' }).catch(() => {});
-  t.ok(existsSync(SETTINGS_FILE), 'settings.json exists in %APPDATA%\io.github.sjhowie.cirth');
+  t.ok(existsSync(SETTINGS_FILE), 'settings.json is written to the CIRTH_CONFIG_DIR folder');
   t.eq(read(), { theme: 'dark', fontFamily: 'Consolas, monospace', fontSize: 20, indent: '4', largeFileThresholdMb: 25, wordWrap: true }, 'settings.json holds exactly the chosen values');
   t.eq(readFileSync(SETTINGS_FILE).subarray(0, 1).toString(), '{', 'settings.json is plain JSON (no BOM)');
   await ui.closeSettings(page);
@@ -82,7 +81,7 @@ export async function run(t) {
   // ---- an unreadable settings.json: defaults, file left untouched ----
   app = await t.relaunch(app, { args: [f], settings: null });
   await app.close();
-  writeFileSync(SETTINGS_FILE, '{ this is not json');
+  write(SETTINGS_FILE, '{ this is not json');
   app = await t.launch({ args: [f], keepSettings: true });
   page = app.page;
   await page.waitForFunction(() => document.querySelectorAll('.strip .tab').length === 1, null, { timeout: 15000 });

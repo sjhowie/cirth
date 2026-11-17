@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { encodingChoices, encodingLabel } from "./encodings";
+import { encodingChoices, encodingLabel, eolChoices, eolFromLabel, eolLabel, lossyLabel } from "./encodings";
+
+describe("EOL choices", () => {
+  it("offers LF, CRLF and CR, and each label round-trips", () => {
+    expect(Object.keys(eolChoices)).toEqual(["LF", "CRLF", "CR"]);
+    for (const [label, eol] of Object.entries(eolChoices)) {
+      expect(eolLabel(eol)).toBe(label);
+      expect(eolFromLabel(label)).toBe(eol);
+    }
+  });
+
+  it("returns null for an unknown label", () => {
+    expect(eolFromLabel("LFCR")).toBeNull();
+  });
+});
+
+describe("lossyLabel", () => {
+  it("names the encoding a lossy read failed, and is null for a clean read", () => {
+    expect(lossyLabel({ lossy: true, encoding: "utf-8", bom: true })).toBe("UTF-8 with BOM");
+    expect(lossyLabel({ lossy: false, encoding: "utf-8", bom: true })).toBeNull();
+  });
+});
 
 describe("encodingLabel", () => {
   it("names every picker choice by its own label (round trip)", () => {

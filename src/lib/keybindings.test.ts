@@ -106,3 +106,19 @@ describe("formatBinding", () => {
     expect(formatBinding("Mod-,", true)).toBe("⌘,");
   });
 });
+
+describe("eventToStroke AltGr", () => {
+  it("lets AltGr characters through (Windows reports Ctrl+Alt)", () => {
+    const altGr = (key: string, code: string): KeyEventLike => ({
+      ...ev(key, { ctrlKey: true, altKey: true, code }),
+      getModifierState: (k: string) => k === "AltGraph",
+    });
+    expect(eventToStroke(altGr("ś", "KeyS"), false)).toBeNull();
+    expect(eventToStroke(altGr("µ", "KeyM"), false)).toBeNull();
+  });
+
+  it("still maps a real Ctrl+Alt chord", () => {
+    const e: KeyEventLike = { ...ev("s", { ctrlKey: true, altKey: true, code: "KeyS" }), getModifierState: () => false };
+    expect(eventToStroke(e, false)).toBe("Mod-Alt-s");
+  });
+});

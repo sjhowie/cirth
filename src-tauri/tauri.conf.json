@@ -21,7 +21,8 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420; object-src 'none'; base-uri 'self'; form-action 'none'",
+      "dangerousDisableAssetCspModification": ["style-src"],
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]
@@ -30,7 +31,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": ["nsis"],
     "publisher": "Steve Howie",
     "shortDescription": "A lightweight text editor",
     "longDescription": "Cirth is a fast, lightweight desktop text editor with syntax highlighting, markdown preview, project search and large-file support.",
@@ -39,10 +40,6 @@
       "nsis": {
         "installMode": "currentUser",
         "installerHooks": "windows/hooks.nsh"
-      },
-      "wix": {
-        "fragmentPaths": ["windows/explorer-menu.wxs"],
-        "componentRefs": ["ExplorerContextMenu"]
       }
     },
     "icon": [

@@ -22,6 +22,11 @@ export interface Tab {
   diskChanged: boolean;
   /** File no longer exists on disk (still saveable). */
   deleted: boolean;
+  /**
+   * The file had bytes invalid for its encoding, decoded as U+FFFD: the label of that encoding
+   * (shown in the notice), or null. Cleared by a successful save.
+   */
+  lossy: string | null;
 }
 
 class TabsStore {

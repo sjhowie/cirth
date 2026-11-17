@@ -5,7 +5,7 @@
 //! (a NUL byte) are skipped. `replace_in_folder` decodes properly via `files.rs`.
 
 use crate::error::{AppError, blocking};
-use crate::files::{read_decoded, write_encoded};
+use crate::files::{Eol, read_decoded, write_encoded};
 use grep_matcher::{LineTerminator, Matcher};
 use grep_regex::{RegexMatcher, RegexMatcherBuilder};
 use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkMatch};
@@ -76,9 +76,11 @@ struct DoneEvent<'a> {
     summary: Summary,
 }
 
+/// Whole word uses half boundaries: no word character just before the match and none just after.
+/// Unlike `\b`, they also hold at a non-word edge, so `foo(` matches in `x foo( y`.
 fn pattern_of(query: &str, regex: bool, whole_word: bool) -> String {
     let base = if regex { query.to_string() } else { regex::escape(query) };
-    if whole_word { format!(r"\b(?:{base})\b") } else { base }
+    if whole_word { format!(r"\b{{start-half}}(?:{base})\b{{end-half}}") } else { base }
 }
 
 fn check_query(query: &str) -> Result<(), AppError> {
@@ -212,6 +214,38 @@ impl Sink for Collector<'_> {
     }
 }
 
+/// Marker carried by the I/O error `CancelReader` returns.
+#[derive(Debug)]
+struct SearchCancelled;
+
+impl std::fmt::Display for SearchCancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("search cancelled")
+    }
+}
+
+impl std::error::Error for SearchCancelled {}
+
+fn is_cancelled(e: &std::io::Error) -> bool {
+    e.get_ref().is_some_and(|inner| inner.is::<SearchCancelled>())
+}
+
+/// Checks the cancel flag before every read, so a long file with no matches still stops promptly.
+/// Fails with a `SearchCancelled` error (kind `Other`, not `Interrupted`, which readers retry).
+struct CancelReader<'a, R> {
+    inner: R,
+    cancel: &'a AtomicBool,
+}
+
+impl<R: std::io::Read> std::io::Read for CancelReader<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.cancel.load(Ordering::Relaxed) {
+            return Err(std::io::Error::other(SearchCancelled));
+        }
+        self.inner.read(buf)
+    }
+}
+
 /// Walks and searches, calling `emit` once per file with matches.
 pub fn execute(
     prep: &Prepared,
@@ -258,8 +292,12 @@ pub fn execute(
             cap,
             cancel,
         };
-        if let Err(e) = searcher.search_path(&prep.matcher, entry.path(), &mut sink) {
-            log::error!("search: {}: {e}", entry.path().display());
+        let searched = std::fs::File::open(entry.path())
+            .and_then(|f| searcher.search_reader(&prep.matcher, CancelReader { inner: f, cancel }, &mut sink));
+        match searched {
+            Ok(()) => {}
+            Err(e) if is_cancelled(&e) => {}
+            Err(e) => log::error!("search: {}: {e}", entry.path().display()),
         }
         let items = std::mem::take(&mut sink.items);
         if !items.is_empty() {
@@ -291,25 +329,51 @@ fn build_replace_regex(query: &str, regex: bool, case_sensitive: bool, whole_wor
         .map_err(|e| AppError::parse(format!("invalid search pattern: {e}"), 1, 1))
 }
 
-/// Replaces non-empty matches; `$1` expands only when `expand`. Returns text and count.
-pub fn replace_in_text(re: &Regex, text: &str, replacement: &str, expand: bool) -> (String, usize) {
-    let mut out = String::with_capacity(text.len());
+/// Splits off the first line of `text`: (content, terminator). The terminator is `\r` for `cr`
+/// files, else `\n` or `\r\n`; it is empty on a last line without one.
+fn split_line(text: &str, eol: Eol) -> (&str, &str) {
+    let found = if eol == Eol::Cr { text.find('\r') } else { text.find('\n') };
+    match found {
+        None => (text, ""),
+        Some(i) if eol != Eol::Cr && i > 0 && text.as_bytes()[i - 1] == b'\r' => (&text[..i - 1], &text[i - 1..=i]),
+        Some(i) => (&text[..i], &text[i..=i]),
+    }
+}
+
+/// Replaces non-empty matches in one line, appending to `out`; returns the count.
+fn replace_in_line(re: &Regex, line: &str, replacement: &str, expand: bool, out: &mut String) -> usize {
     let (mut last, mut count) = (0usize, 0usize);
-    for caps in re.captures_iter(text) {
+    for caps in re.captures_iter(line) {
         let Some(m) = caps.get(0) else { continue };
         if m.start() == m.end() {
             continue;
         }
-        out.push_str(&text[last..m.start()]);
+        out.push_str(&line[last..m.start()]);
         if expand {
-            caps.expand(replacement, &mut out);
+            caps.expand(replacement, out);
         } else {
             out.push_str(NoExpand(replacement).0);
         }
         last = m.end();
         count += 1;
     }
-    out.push_str(&text[last..]);
+    out.push_str(&line[last..]);
+    count
+}
+
+/// Replaces non-empty matches line by line, the same units the folder search matches, so a
+/// pattern never spans or eats a line break; terminators are kept byte for byte. `$1` expands
+/// only when `expand`. Returns text and count.
+pub fn replace_in_text(re: &Regex, text: &str, replacement: &str, expand: bool, eol: Eol) -> (String, usize) {
+    let mut out = String::with_capacity(text.len());
+    let mut count = 0usize;
+    let mut rest = text;
+    while !rest.is_empty() {
+        let (line, term) = split_line(rest, eol);
+        count += replace_in_line(re, line, replacement, expand, &mut out);
+        out.push_str(term);
+        rest = &rest[line.len() + term.len()..];
+    }
     (out, count)
 }
 
@@ -326,9 +390,16 @@ pub fn replace_paths(opts: &SearchOpts, replacement: &str, paths: &[String]) -> 
     for p in paths {
         let path = Path::new(p);
         let (decoded, _) = read_decoded(path)?;
-        let (text, count) = replace_in_text(&re, &decoded.text, replacement, opts.regex);
+        let (text, count) = replace_in_text(&re, &decoded.text, replacement, opts.regex, decoded.eol);
         if count == 0 {
             continue;
+        }
+        if decoded.lossy {
+            // Writing the decoded text back would turn the invalid bytes into U+FFFD for good.
+            return Err(AppError::encoding(format!(
+                "{p}: contains bytes that are not valid {}; open and save it in the editor instead",
+                decoded.encoding
+            )));
         }
         write_encoded(path, &text, &decoded.encoding, decoded.bom)?;
         result.files_changed += 1;
@@ -596,11 +667,91 @@ mod tests {
     #[test]
     fn replace_literal_and_regex_modes() {
         let re = build_replace_regex("a(b)", true, true, false).unwrap();
-        assert_eq!(replace_in_text(&re, "ab ab", "[$1]", true), ("[b] [b]".to_string(), 2));
+        assert_eq!(replace_in_text(&re, "ab ab", "[$1]", true, Eol::Lf), ("[b] [b]".to_string(), 2));
         let re = build_replace_regex("a(b)", false, true, false).unwrap();
-        assert_eq!(replace_in_text(&re, "a(b) a(b)", "$1", false), ("$1 $1".to_string(), 2));
+        assert_eq!(replace_in_text(&re, "a(b) a(b)", "$1", false, Eol::Lf), ("$1 $1".to_string(), 2));
         let re = build_replace_regex("x*", true, true, false).unwrap();
-        assert_eq!(replace_in_text(&re, "axxb", "-", true), ("a-b".to_string(), 1), "empty matches are skipped");
+        assert_eq!(replace_in_text(&re, "axxb", "-", true, Eol::Lf), ("a-b".to_string(), 1), "empty matches are skipped");
+    }
+
+    #[test]
+    fn replace_works_line_by_line_and_keeps_terminators() {
+        let re = build_replace_regex(r"\s+$", true, true, false).unwrap();
+        let text = "foo  \r\n\r\nbar\r\n";
+        assert_eq!(replace_in_text(&re, text, "", true, Eol::Crlf), ("foo\r\n\r\nbar\r\n".to_string(), 1));
+        // The folder search counts the same single match.
+        let d = tempfile::tempdir().unwrap();
+        fs::write(d.path().join("t.txt"), text).unwrap();
+        let mut o = opts(r"\s+$");
+        o.regex = true;
+        assert_eq!(search(d.path(), &o).1.matches, 1);
+        // Mixed terminators, a last line without one, and lone-CR files.
+        assert_eq!(replace_in_text(&re, "a \nb \r\nc ", "", true, Eol::Lf), ("a\nb\r\nc".to_string(), 3));
+        assert_eq!(replace_in_text(&re, "a \rb \r", "", true, Eol::Cr), ("a\rb\r".to_string(), 2));
+        let re = build_replace_regex("^", true, true, false).unwrap();
+        assert_eq!(replace_in_text(&re, "", "x", true, Eol::Lf), (String::new(), 0));
+    }
+
+    #[test]
+    fn whole_word_with_non_word_edges() {
+        let d = tempfile::tempdir().unwrap();
+        fs::write(d.path().join("yes.txt"), "x foo( y\n").unwrap();
+        fs::write(d.path().join("no.txt"), "xfoo( y\n").unwrap();
+        let mut o = opts("foo(");
+        o.whole_word = true;
+        let (res, sum) = search(d.path(), &o);
+        assert_eq!(names(&res, d.path()), vec!["yes.txt"]);
+        assert_eq!(sum.matches, 1);
+        let re = build_replace_regex("foo(", false, true, true).unwrap();
+        assert_eq!(replace_in_text(&re, "x foo( y xfoo( z", "bar", false, Eol::Lf), ("x bar y xfoo( z".to_string(), 1));
+        // Word edges still need a boundary.
+        let re = build_replace_regex("cat", false, true, true).unwrap();
+        assert_eq!(replace_in_text(&re, "cat concat cats", "dog", false, Eol::Lf).1, 1);
+    }
+
+    #[test]
+    fn cancel_stops_mid_file() {
+        /// Endless non-matching bytes; sets the cancel flag after a few reads.
+        struct Endless<'a> {
+            reads: usize,
+            cancel: &'a AtomicBool,
+        }
+        impl std::io::Read for Endless<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                self.reads += 1;
+                if self.reads == 3 {
+                    self.cancel.store(true, Ordering::Relaxed);
+                }
+                buf.fill(b'a');
+                if let Some(last) = buf.last_mut() {
+                    *last = b'\n';
+                }
+                Ok(buf.len())
+            }
+        }
+        let cancel = AtomicBool::new(false);
+        let prep = {
+            let d = tempfile::tempdir().unwrap();
+            prepare(d.path(), &opts("needle")).unwrap()
+        };
+        let mut searcher = SearcherBuilder::new().line_terminator(LineTerminator::crlf()).build();
+        let (mut total, mut truncated) = (0, false);
+        let mut sink = Collector { matcher: &prep.matcher, items: Vec::new(), total: &mut total, truncated: &mut truncated, cap: 10, cancel: &cancel };
+        let reader = CancelReader { inner: Endless { reads: 0, cancel: &cancel }, cancel: &cancel };
+        let err = searcher.search_reader(&prep.matcher, reader, &mut sink).unwrap_err();
+        assert!(is_cancelled(&err), "{err}");
+    }
+
+    #[test]
+    fn replace_refuses_lossy_files() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("bad.txt");
+        let bytes = b"\xEF\xBB\xBFfoo \xE9 bar\n";
+        fs::write(&p, bytes).unwrap();
+        let err = replace_paths(&opts("foo"), "baz", &[p.to_string_lossy().into_owned()]).unwrap_err();
+        assert_eq!(err.kind, ErrorKind::Encoding);
+        assert!(err.message.contains("not valid utf-8"), "{}", err.message);
+        assert_eq!(fs::read(&p).unwrap(), bytes, "file untouched");
     }
 
     #[test]

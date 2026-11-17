@@ -36,7 +36,7 @@
   }
 
   function onQueryKey(e: KeyboardEvent): void {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.isComposing) {
       e.preventDefault();
       void runSearch();
     } else if (e.key === "Escape" && search.query !== "") {

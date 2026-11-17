@@ -1,5 +1,5 @@
 import { basicSetup } from "codemirror";
-import { EditorView, lineNumbers, highlightActiveLine, drawSelection, keymap, rectangularSelection, crosshairCursor } from "@codemirror/view";
+import { EditorView, lineNumbers, highlightActiveLine, drawSelection, highlightSpecialChars, keymap, rectangularSelection, crosshairCursor } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { search, searchKeymap } from "@codemirror/search";
 import { EditorState, type Extension } from "@codemirror/state";
@@ -17,6 +17,8 @@ export function lightModeExtensions(): Extension[] {
   return [
     lineNumbers(),
     highlightActiveLine(),
+    // Viewport-only and cheap: keeps NUL / zero-width characters visible in big logs.
+    highlightSpecialChars(),
     drawSelection(),
     EditorState.allowMultipleSelections.of(true),
     rectangularSelection(),

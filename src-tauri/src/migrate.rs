@@ -10,6 +10,10 @@ const OLD_IDENTIFIER: &str = "com.simpleeditor.app";
 
 /// Runs before the main window is created (the WebView2 profile must not be in use yet).
 pub fn from_old_name(app: &tauri::AppHandle) {
+    if let Some(dir) = crate::settings::config_dir_override() {
+        log::info!("migrate: skipped, {} is set ({})", crate::settings::CONFIG_DIR_ENV, dir.display());
+        return;
+    }
     let paths = app.path();
     // Once only: the new config folder is created here, so a settings.json deleted later (by the user or E2E) stays deleted.
     if let (Ok(config_root), Ok(new_config)) = (paths.config_dir(), paths.app_config_dir())

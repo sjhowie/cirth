@@ -17,7 +17,7 @@
   import { layout } from "$lib/layout.svelte";
   import { registerMarkdownPreview } from "$lib/markdown/preview.svelte";
   import { reportError } from "$lib/notifications.svelte";
-  import { initSettings, isDark, settings, themeState } from "$lib/settings.svelte";
+  import { flushSettings, initSettings, isDark, settings, themeState } from "$lib/settings.svelte";
   import { tabsStore } from "$lib/tabs.svelte";
   import { startUpdater } from "$lib/updater.svelte";
   import { startWatching, syncWatchedPaths } from "$lib/watch.svelte";
@@ -77,18 +77,18 @@
           const win = getCurrentWindow();
           let closing = false;
           unlistenClose = await win.onCloseRequested(async (event) => {
+            // Tauri destroys the window after this handler unless it is prevented, so every path
+            // prevents and only the confirmed path destroys. A second X / Alt+F4 while the prompt is
+            // up must leave the window (and the prompt) alone.
+            event.preventDefault();
             if (closing) return;
             closing = true;
             try {
-              if (!(await confirmExit())) {
-                event.preventDefault();
-                return;
-              }
-              event.preventDefault();
+              if (!(await confirmExit())) return;
+              await flushSettings();
               await win.destroy();
             } catch (e) {
               reportError("Close window", e);
-              event.preventDefault();
             } finally {
               closing = false;
             }

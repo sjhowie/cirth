@@ -22,6 +22,14 @@ export async function run(t) {
   await ui.dialog(page).waitFor({ timeout: 8000 });
   const text = await ui.dialog(page).innerText();
   t.ok(/Unsaved changes/.test(text) && /one\.txt/.test(text) && !/two\.txt/.test(text), `prompt lists only the dirty file (${text.replace(/\s+/g, ' ').slice(0, 90)})`);
+
+  // A second close request (X again, Alt+F4) while the prompt is open must not destroy the window.
+  t.ok(closeMainWindow(app.pid), 'WM_CLOSE delivered while the prompt is open');
+  await sleep(1500);
+  t.ok(!app.exited(), 'second close request while prompting keeps the app running');
+  t.eq(await ui.dialog(page).count(), 1, 'the unsaved-changes prompt is still up (and not stacked twice)');
+  t.eq(await ed.doc(page), 'one\nedit', 'document intact after the second close request');
+
   await ui.dialogButton(page, 'Cancel').click();
   await ui.dialog(page).waitFor({ state: 'detached' });
   await sleep(1500);

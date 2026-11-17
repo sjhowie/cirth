@@ -70,6 +70,7 @@ export interface KeyEventLike {
   metaKey: boolean;
   altKey: boolean;
   shiftKey: boolean;
+  getModifierState?: (key: string) => boolean;
 }
 
 const modifierKeys = new Set(["control", "shift", "alt", "meta", "altgraph", "os", "capslock"]);
@@ -78,6 +79,8 @@ const modifierKeys = new Set(["control", "shift", "alt", "meta", "altgraph", "os
 export function eventToStroke(e: KeyEventLike, isMac: boolean): string | null {
   let key = e.key.toLowerCase();
   if (modifierKeys.has(key)) return null;
+  // On Windows AltGr arrives as Ctrl+Alt; the user is typing a character (ś, µ), not a shortcut.
+  if (e.getModifierState?.("AltGraph")) return null;
   // Alt changes the produced character on macOS (Alt+f -> "ƒ"); use the physical key instead.
   if (e.altKey && e.code) {
     const m = /^(?:Key([A-Z])|Digit([0-9]))$/.exec(e.code);

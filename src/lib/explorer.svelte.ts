@@ -1,5 +1,6 @@
 import { createDir, createFile, listDir, renamePath, trashPath, type DirEntry } from "./ipc";
 import { showDialog } from "./dialogs.svelte";
+import { rekeyUnder, repoint, validName } from "./explorerLogic";
 import { layout } from "./layout.svelte";
 import { notifyError, reportError } from "./notifications.svelte";
 import { basename, dirname, isInside, joinPath, normPath, replacePrefix, samePath } from "./paths";
@@ -110,12 +111,6 @@ export function cancelEdit(): void {
   explorer.renaming = null;
 }
 
-function validName(name: string): string | null {
-  if (!name || name === "." || name === "..") return "Name cannot be empty";
-  if (/[\\/]/.test(name)) return "Name cannot contain / or \\";
-  return null;
-}
-
 /** Creates the pending file/folder; returns the new path for files (so the caller can open it). */
 export async function commitCreate(name: string): Promise<string | null> {
   const pending = explorer.creating;
@@ -167,6 +162,10 @@ export async function commitRename(name: string): Promise<void> {
     }
   }
   if (explorer.root && samePath(explorer.root, from)) explorer.root = to;
+  // Keep the renamed folder's expanded state, loaded listings and selection under the new path.
+  explorer.dirs = rekeyUnder(explorer.dirs, from, to, (d) => ({ ...d, path: repoint(d.path, from, to) ?? d.path }));
+  explorer.expanded = rekeyUnder(explorer.expanded, from, to);
+  explorer.selected = repoint(explorer.selected, from, to);
   await loadDir(parent);
 }
 

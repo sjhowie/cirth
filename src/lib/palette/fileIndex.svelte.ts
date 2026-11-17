@@ -13,6 +13,8 @@ class FileIndex {
   loading = $state(false);
   stale = true;
   inFlight: Promise<void> | null = null;
+  /** Root the in-flight load was started for. */
+  inFlightRoot: string | null = null;
 }
 
 export const fileIndex = new FileIndex();
@@ -37,8 +39,13 @@ export async function ensureFileIndex(root: string | null): Promise<void> {
     fileIndex.truncated = false;
     fileIndex.stale = true;
   }
+  if (fileIndex.inFlight) {
+    if (fileIndex.inFlightRoot !== null && samePath(fileIndex.inFlightRoot, root)) return fileIndex.inFlight;
+    // The root changed while a load for another folder runs: let it finish, then load this one.
+    await fileIndex.inFlight;
+    return ensureFileIndex(root);
+  }
   if (!fileIndex.stale) return;
-  if (fileIndex.inFlight) return fileIndex.inFlight;
   fileIndex.stale = false;
   fileIndex.loading = true;
   const request = (async () => {
@@ -55,9 +62,11 @@ export async function ensureFileIndex(root: string | null): Promise<void> {
     } finally {
       fileIndex.loading = false;
       fileIndex.inFlight = null;
+      fileIndex.inFlightRoot = null;
     }
   })();
   fileIndex.inFlight = request;
+  fileIndex.inFlightRoot = root;
   return request;
 }
 

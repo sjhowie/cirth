@@ -6,7 +6,8 @@ import { EditorSelection, Text, Transaction } from "@codemirror/state";
 import { dispatchToTab, getTabDoc, getTabState, recomputeDirty } from "./editorHost.svelte";
 import { splitLines } from "./dirty";
 import { explorer, refreshForChanges } from "./explorer.svelte";
-import { onFsChanged, readFile, toAppError, watchPaths } from "./ipc";
+import { lossyLabel } from "./encodings";
+import { onFsChanged, readFile, toAppError, watchPaths, type FileMeta } from "./ipc";
 import { notifyError, reportError } from "./notifications.svelte";
 import { isInside, normPath, samePath } from "./paths";
 import { tabsStore, type Tab } from "./tabs.svelte";
@@ -50,6 +51,31 @@ export async function startWatching(): Promise<void> {
 const inFlight = new Set<number>();
 const rerun = new Set<number>();
 
+/**
+ * Our own writes, by normalised path: the size write_file reported and when it finished. The change
+ * event for our own save re-reads the file, and detection can decode it differently from what we
+ * wrote (Windows-1252 bytes that happen to be valid UTF-8, like "Ã©"), so a re-read that matches our
+ * last write in size, shortly after it, is our echo and is ignored.
+ */
+const ownWrites = new Map<string, { size: number; at: number }>();
+const OWN_WRITE_WINDOW_MS = 3000;
+
+/** Called by the save path after write_file succeeds. */
+export function noteOwnWrite(path: string, size: number): void {
+  ownWrites.set(normPath(path), { size, at: Date.now() });
+}
+
+function isOwnWriteEcho(path: string, size: number): boolean {
+  const key = normPath(path);
+  const w = ownWrites.get(key);
+  if (!w) return false;
+  if (Date.now() - w.at > OWN_WRITE_WINDOW_MS) {
+    ownWrites.delete(key);
+    return false;
+  }
+  return w.size === size;
+}
+
 export async function handleFsChanged(paths: string[]): Promise<void> {
   await refreshForChanges(paths);
   for (const tab of [...tabsStore.tabs]) {
@@ -80,12 +106,16 @@ async function reconcileTab(id: number): Promise<void> {
       return;
     }
     tab.deleted = false;
+    if (isOwnWriteEcho(tab.path, result.meta.size)) return;
     if (sameText(result.text, tab.savedDoc)) {
       tab.diskChanged = false; // our own save, or a revert
       return;
     }
     recomputeDirty(tab);
-    if (tab.dirty) tab.diskChanged = true;
+    // A clean tab takes the disk text silently, but never a different encoding: that would re-decode
+    // the user's text behind their back. Show the banner and let them choose Reload.
+    const sameEncoding = result.meta.encoding === tab.encoding && result.meta.bom === tab.bom;
+    if (tab.dirty || !sameEncoding) tab.diskChanged = true;
     else applyDiskText(tab, result.text, result.meta, false);
   } finally {
     inFlight.delete(id);
@@ -93,14 +123,8 @@ async function reconcileTab(id: number): Promise<void> {
   }
 }
 
-interface DiskMeta {
-  encoding: string;
-  bom: boolean;
-  eol: "lf" | "crlf";
-}
-
 /** Replaces a tab's content with disk text; new savedDoc, cursor clamped. */
-function applyDiskText(tab: Tab, text: string, meta: DiskMeta, undoable: boolean): void {
+function applyDiskText(tab: Tab, text: string, meta: FileMeta, undoable: boolean): void {
   const newDoc = Text.of(splitLines(text));
   const old = getTabState(tab);
   const sel = old.selection.main;
@@ -113,6 +137,7 @@ function applyDiskText(tab: Tab, text: string, meta: DiskMeta, undoable: boolean
   tab.encoding = meta.encoding;
   tab.bom = meta.bom;
   tab.eol = meta.eol;
+  tab.lossy = lossyLabel(meta);
   tab.metaChanged = false;
   tab.diskChanged = false;
   tab.deleted = false;

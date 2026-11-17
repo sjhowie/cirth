@@ -242,6 +242,7 @@
         move(-8);
         break;
       case "Enter":
+        if (e.isComposing) break;
         e.preventDefault();
         void pickRow(rows[selected]);
         break;

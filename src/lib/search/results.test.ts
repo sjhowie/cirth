@@ -119,8 +119,8 @@ describe("splitPreview / locateMatch", () => {
     expect(locateMatch(line, { line: 1, col: 3, preview: line, matchLen: 6 })).toEqual({ col: 4, len: 6 });
   });
 
-  it("falls back to the matched text when the line changed, null when gone", () => {
-    expect(locateMatch("edited: needle here", { line: 1, col: 1, preview: "needle", matchLen: 6 })).toEqual({ col: 9, len: 6 });
+  it("returns null when the line changed, even if the matched text still occurs elsewhere on it", () => {
+    expect(locateMatch("edited: needle here", { line: 1, col: 4, preview: "a needle b", matchLen: 6 })).toBeNull();
     expect(locateMatch("nothing", { line: 1, col: 1, preview: "needle", matchLen: 6 })).toBeNull();
   });
 });

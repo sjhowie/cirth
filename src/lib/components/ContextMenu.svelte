@@ -7,11 +7,25 @@
 
 <script lang="ts">
   let { x, y, items, onclose }: { x: number; y: number; items: MenuItem[]; onclose: () => void } = $props();
+
+  const MARGIN = 4;
+  let menu = $state<HTMLDivElement | null>(null);
+  let innerW = $state(0);
+  let innerH = $state(0);
+  // Clamp to the viewport once the menu's size is measured.
+  const left = $derived(menu ? Math.max(MARGIN, Math.min(x, innerW - menu.offsetWidth - MARGIN)) : x);
+  const top = $derived(menu ? Math.max(MARGIN, Math.min(y, innerH - menu.offsetHeight - MARGIN)) : y);
 </script>
 
-<svelte:window onclick={onclose} oncontextmenu={onclose} onkeydowncapture={(e) => e.key === "Escape" && onclose()} />
+<svelte:window
+  onclick={onclose}
+  oncontextmenu={onclose}
+  onkeydowncapture={(e) => e.key === "Escape" && onclose()}
+  bind:innerWidth={innerW}
+  bind:innerHeight={innerH}
+/>
 
-<div class="ctx" role="menu" style:left="{x}px" style:top="{y}px">
+<div class="ctx" role="menu" bind:this={menu} style:left="{left}px" style:top="{top}px">
   {#each items as item (item.label)}
     <button
       class="entry"

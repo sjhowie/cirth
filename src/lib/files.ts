@@ -5,12 +5,14 @@ import { activateTab, getTabDoc, makeTabState, recomputeDirty, removeTab, setTab
 import { showDialog } from "./dialogs.svelte";
 import { detectLanguageName, loadLanguageExtension, PLAIN_TEXT } from "./editor/languages";
 import { setRoot } from "./explorer.svelte";
-import { getStartupPaths, isTauri, listDir, onOpenPaths, readFile, toAppError, writeFile } from "./ipc";
+import { lossyLabel } from "./encodings";
+import { getStartupPaths, isTauri, listDir, onOpenPaths, readFile, toAppError, writeFile, type Eol } from "./ipc";
 import { notifyError, notifyInfo, reportError } from "./notifications.svelte";
 import { basename } from "./paths";
 import { defaultEol } from "./platform";
 import { settings } from "./settings.svelte";
 import { tabsStore, type Tab } from "./tabs.svelte";
+import { noteOwnWrite } from "./watch.svelte";
 
 function requireTauri(): boolean {
   if (isTauri()) return true;
@@ -48,6 +50,7 @@ export async function newTab(): Promise<Tab> {
     scrollTop: 0,
     diskChanged: false,
     deleted: false,
+    lossy: null,
   });
   activateTab(tab.id);
   return tab;
@@ -98,6 +101,7 @@ export async function openPath(path: string): Promise<Tab | null> {
     scrollTop: 0,
     diskChanged: false,
     deleted: false,
+    lossy: lossyLabel(meta),
   });
   activateTab(tab.id);
   if (replace) removeTab(replace.id);
@@ -174,10 +178,54 @@ export async function openStartupPaths(): Promise<void> {
 
 // ---------- save ----------
 
-async function writeTab(tab: Tab, path: string): Promise<boolean> {
+/** Tabs whose user chose "Save anyway" for replacement characters, and prompts still open, by tab id. */
+const lossyAccepted = new Set<number>();
+const lossyPrompts = new Map<number, Promise<boolean>>();
+
+/** A lossy tab asks once before its first save writes the U+FFFD replacement characters. */
+async function confirmLossySave(tab: Tab): Promise<boolean> {
+  if (tab.lossy === null || lossyAccepted.has(tab.id)) return true;
+  let prompt = lossyPrompts.get(tab.id);
+  if (!prompt) {
+    prompt = showDialog({
+      title: `Save ${tab.title} with replacement characters?`,
+      message:
+        `${tab.title} had bytes that aren't valid ${tab.lossy}; they were replaced with "�" when it opened. ` +
+        `Saving writes those replacement characters, and the original bytes are lost.`,
+      buttons: [
+        { label: "Save anyway", value: "save", primary: true },
+        { label: "Cancel", value: "cancel" },
+      ],
+      cancelValue: "cancel",
+    }).then((answer) => answer === "save");
+    lossyPrompts.set(tab.id, prompt);
+    void prompt.finally(() => lossyPrompts.delete(tab.id));
+  }
+  const ok = await prompt;
+  if (ok) lossyAccepted.add(tab.id);
+  return ok;
+}
+
+/** The last write queued per tab: saves of one tab run one after another, so the newest request lands last. */
+const writeChains = new Map<number, Promise<boolean>>();
+
+function writeTab(tab: Tab, path: string): Promise<boolean> {
+  const previous = writeChains.get(tab.id) ?? Promise.resolve(true);
+  // runWrite never rejects, so a failed earlier save doesn't skip this one.
+  const next = previous.then(() => runWrite(tab, path));
+  writeChains.set(tab.id, next);
+  void next.finally(() => {
+    if (writeChains.get(tab.id) === next) writeChains.delete(tab.id);
+  });
+  return next;
+}
+
+/** One write_file of the tab's text as it is when the write starts (after any earlier save finished). */
+async function runWrite(tab: Tab, path: string): Promise<boolean> {
   const doc = getTabDoc(tab); // captured: edits made while the write runs stay dirty
+  let size: number;
   try {
-    await writeFile(path, doc, { encoding: tab.encoding, bom: tab.bom, eol: tab.eol });
+    ({ size } = await writeFile(path, doc, { encoding: tab.encoding, bom: tab.bom, eol: tab.eol }));
   } catch (e) {
     const err = toAppError(e);
     if (err.kind === "encoding") notifyError(`Cannot save as ${tab.encoding}: ${err.message}. Pick another encoding in the status bar.`);
@@ -185,12 +233,20 @@ async function writeTab(tab: Tab, path: string): Promise<boolean> {
     console.error("write_file failed", path, e);
     return false;
   }
+  noteOwnWrite(path, size);
   tab.savedDoc = doc;
   tab.metaChanged = false;
   tab.deleted = false;
   tab.diskChanged = false;
+  tab.lossy = null; // the file on disk now holds the replacement characters, which are valid
+  lossyAccepted.delete(tab.id);
   recomputeDirty(tab);
   return true;
+}
+
+async function saveTo(tab: Tab, path: string): Promise<boolean> {
+  if (!(await confirmLossySave(tab))) return false;
+  return writeTab(tab, path);
 }
 
 export async function saveTabAs(tab: Tab): Promise<boolean> {
@@ -208,7 +264,7 @@ export async function saveTabAs(tab: Tab): Promise<boolean> {
     notifyError(`${basename(target)} is already open in another tab`);
     return false;
   }
-  if (!(await writeTab(tab, target))) return false;
+  if (!(await saveTo(tab, target))) return false;
   tab.path = target;
   tab.title = basename(target);
   if (tab.languageName === PLAIN_TEXT && !tab.largeFile) {
@@ -221,7 +277,7 @@ export async function saveTabAs(tab: Tab): Promise<boolean> {
 export async function saveTab(tab: Tab): Promise<boolean> {
   if (tab.path === null) return saveTabAs(tab);
   if (!requireTauri()) return false;
-  return writeTab(tab, tab.path);
+  return saveTo(tab, tab.path);
 }
 
 /** Saves every dirty tab; stops (false) at the first failure or cancelled Save As. */
@@ -235,7 +291,20 @@ export async function saveAll(): Promise<boolean> {
 
 // ---------- close ----------
 
-export async function closeTab(id: number): Promise<boolean> {
+/** Close prompts in progress, by tab id: a second close request for the same tab joins the first. */
+const closing = new Map<number, Promise<boolean>>();
+
+export function closeTab(id: number): Promise<boolean> {
+  let pending = closing.get(id);
+  if (!pending) {
+    pending = closeTabOnce(id);
+    closing.set(id, pending);
+    void pending.finally(() => closing.delete(id));
+  }
+  return pending;
+}
+
+async function closeTabOnce(id: number): Promise<boolean> {
   const tab = tabsStore.byId(id);
   if (!tab) return true;
   recomputeDirty(tab);
@@ -252,7 +321,10 @@ export async function closeTab(id: number): Promise<boolean> {
       cancelValue: "cancel",
     });
     if (answer === "cancel") return false;
+    // Every await can outlive the tab (closed elsewhere meanwhile): re-check before saving or removing.
+    if (!tabsStore.byId(id)) return true;
     if (answer === "save" && !(await saveTab(tab))) return false;
+    if (!tabsStore.byId(id)) return true;
   }
   removeTab(id);
   return true;
@@ -294,7 +366,7 @@ export async function setTabLanguage(tab: Tab, name: string): Promise<void> {
   setTabLanguageExtension(tab, await languageFor(name, false));
 }
 
-export function setTabEol(tab: Tab, eol: "lf" | "crlf"): void {
+export function setTabEol(tab: Tab, eol: Eol): void {
   if (tab.eol === eol) return;
   tab.eol = eol;
   tab.metaChanged = true;

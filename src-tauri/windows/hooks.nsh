@@ -11,7 +11,7 @@
 !macro NSIS_HOOK_POSTINSTALL
   !insertmacro SE_WRITE_VERB "*" "%1"
   !insertmacro SE_WRITE_VERB "Directory" "%1"
-  !insertmacro SE_WRITE_VERB "Directory\Background" "%V"
+  !insertmacro SE_WRITE_VERB "Directory\Background" "%V."
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

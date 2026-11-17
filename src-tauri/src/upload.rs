@@ -2,22 +2,36 @@
 //! (~110 MB per request) as several `upload_chunk` calls, then name the staged bytes with the
 //! `x-upload-id` header on the consuming command. See "Chunked uploads" in docs/ipc.md.
 
-use crate::error::AppError;
+use crate::error::{AppError, blocking};
 use crate::files::{header, raw_body};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::State;
 use tauri::ipc::Request;
+use tauri::{AppHandle, Manager, State};
 
-/// Staged uploads nobody consumed within this long are dropped on the next `upload_begin`.
+/// A staged upload idle this long (no chunk added, not consumed) is dropped by the next
+/// `upload_begin`, `upload_chunk` or consuming call.
 pub const STAGED_TTL: Duration = Duration::from_secs(10 * 60);
 
 struct Staged {
     chunks: Vec<u8>,
-    created: Instant,
+    /// Last `begin` or `append`.
+    touched: Instant,
+}
+
+type StagedMap = HashMap<String, Staged>;
+
+fn sweep_map(map: &mut StagedMap, now: Instant, ttl: Duration) {
+    map.retain(|id, s| {
+        let keep = now.saturating_duration_since(s.touched) < ttl;
+        if !keep {
+            log::warn!("upload {id}: dropped after {} s idle", ttl.as_secs());
+        }
+        keep
+    });
 }
 
 #[derive(Default)]
@@ -33,34 +47,32 @@ pub struct UploadBegun {
 }
 
 impl UploadState {
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Staged>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, StagedMap> {
         // A poisoned lock only means another command panicked mid-update; the map is still usable.
         self.staged.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Drops entries older than `ttl` as seen from `now`.
-    pub fn sweep(&self, now: Instant, ttl: Duration) {
-        self.lock().retain(|id, s| {
-            let keep = now.saturating_duration_since(s.created) < ttl;
-            if !keep {
-                log::warn!("upload {id}: dropped after {} s unconsumed", ttl.as_secs());
-            }
-            keep
-        });
-    }
-
     pub fn begin_at(&self, now: Instant) -> String {
-        self.sweep(now, STAGED_TTL);
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
         let id = format!("{:x}-{:x}", self.counter.fetch_add(1, Ordering::Relaxed), nanos);
-        self.lock().insert(id.clone(), Staged { chunks: Vec::new(), created: now });
+        let mut map = self.lock();
+        sweep_map(&mut map, now, STAGED_TTL);
+        map.insert(id.clone(), Staged { chunks: Vec::new(), touched: now });
         id
     }
 
+    #[cfg(test)]
     pub fn append(&self, id: &str, bytes: &[u8]) -> Result<(), AppError> {
-        match self.lock().get_mut(id) {
+        self.append_at(id, bytes, Instant::now())
+    }
+
+    pub fn append_at(&self, id: &str, bytes: &[u8], now: Instant) -> Result<(), AppError> {
+        let mut map = self.lock();
+        sweep_map(&mut map, now, STAGED_TTL);
+        match map.get_mut(id) {
             Some(s) => {
                 s.chunks.extend_from_slice(bytes);
+                s.touched = now;
                 Ok(())
             }
             None => Err(unknown(id)),
@@ -69,7 +81,13 @@ impl UploadState {
 
     /// Removes and returns the staged bytes (consume once).
     pub fn take(&self, id: &str) -> Result<Vec<u8>, AppError> {
-        self.lock().remove(id).map(|s| s.chunks).ok_or_else(|| unknown(id))
+        self.take_at(id, Instant::now())
+    }
+
+    pub fn take_at(&self, id: &str, now: Instant) -> Result<Vec<u8>, AppError> {
+        let mut map = self.lock();
+        sweep_map(&mut map, now, STAGED_TTL);
+        map.remove(id).map(|s| s.chunks).ok_or_else(|| unknown(id))
     }
 
     /// Idempotent.
@@ -101,10 +119,12 @@ pub fn upload_begin(state: State<'_, UploadState>) -> UploadBegun {
     UploadBegun { upload_id: state.begin_at(Instant::now()) }
 }
 
-#[tauri::command(async)]
-pub fn upload_chunk(request: Request<'_>, state: State<'_, UploadState>) -> Result<(), AppError> {
+#[tauri::command]
+pub async fn upload_chunk(request: Request<'_>, app: AppHandle) -> Result<(), AppError> {
     let id = header(&request, "x-upload-id")?.ok_or_else(|| AppError::invalid_arg("missing x-upload-id header"))?;
-    state.append(&id, raw_body(&request)?)
+    let bytes = raw_body(&request)?.to_vec();
+    // Appending can reallocate (copy) the whole staged buffer: keep it off the async workers.
+    blocking(move || app.state::<UploadState>().append_at(&id, &bytes, Instant::now())).await
 }
 
 #[tauri::command]
@@ -168,13 +188,37 @@ mod tests {
         let s = UploadState::default();
         let t0 = Instant::now();
         let old = s.begin_at(t0);
-        s.append(&old, b"x").unwrap();
-        let fresh = s.begin_at(t0 + STAGED_TTL - Duration::from_secs(1));
-        assert!(s.append(&old, b"y").is_ok(), "not yet expired");
-        let _ = fresh;
+        s.append_at(&old, b"x", t0).unwrap();
+        let _fresh = s.begin_at(t0 + STAGED_TTL - Duration::from_secs(1));
+        assert_eq!(s.len(), 2, "not yet expired");
         let newer = s.begin_at(t0 + STAGED_TTL + Duration::from_secs(1));
-        assert_eq!(s.append(&old, b"z").unwrap_err().kind, ErrorKind::InvalidArg, "expired entry swept");
-        assert!(s.append(&newer, b"ok").is_ok());
+        assert_eq!(s.len(), 2, "expired entry swept");
+        let late = t0 + STAGED_TTL + Duration::from_secs(2);
+        assert_eq!(s.append_at(&old, b"z", late).unwrap_err().kind, ErrorKind::InvalidArg);
+        assert!(s.append_at(&newer, b"ok", late).is_ok());
+    }
+
+    #[test]
+    fn stale_entries_are_swept_by_chunks_and_takes() {
+        let s = UploadState::default();
+        let t0 = Instant::now();
+        let stale = s.begin_at(t0);
+        let active = s.begin_at(t0);
+        // `active` keeps receiving chunks, so its idle time restarts; `stale` sits.
+        let t1 = t0 + STAGED_TTL - Duration::from_secs(1);
+        s.append_at(&active, b"a", t1).unwrap();
+        let t2 = t0 + STAGED_TTL + Duration::from_secs(1);
+        s.append_at(&active, b"b", t2).unwrap();
+        assert_eq!(s.len(), 1, "a chunk on another upload swept the stale one");
+        assert_eq!(s.take_at(&stale, t2).unwrap_err().kind, ErrorKind::InvalidArg);
+
+        let t3 = t2 + STAGED_TTL + Duration::from_secs(1);
+        let consumed = s.begin_at(t3);
+        assert_eq!(s.len(), 1, "begin swept `active` (idle since t2)");
+        assert_eq!(s.take_at(&consumed, t3).unwrap(), b"");
+        let gone = s.begin_at(t3);
+        assert_eq!(s.take_at(&gone, t3 + STAGED_TTL).unwrap_err().kind, ErrorKind::InvalidArg, "idle past TTL at take");
+        assert_eq!(s.len(), 0);
     }
 
     #[test]

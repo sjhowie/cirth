@@ -38,6 +38,47 @@ fn has_preserve(e: &quick_xml::events::BytesStart<'_>) -> bool {
     e.attributes().flatten().any(|a| a.key.as_ref() == b"xml:space" && a.value.as_ref() == b"preserve")
 }
 
+/// Entity references are only checked for syntax: any named entity resolves (it may come from a
+/// DTD), but a bare `&`, a missing `;` or a bad character reference is an error.
+fn check_escapes(raw: &[u8]) -> Result<(), quick_xml::escape::EscapeError> {
+    let s = String::from_utf8_lossy(raw);
+    quick_xml::escape::unescape_with(&s, |_| Some("")).map(drop)
+}
+
+fn escape_offset(e: &quick_xml::escape::EscapeError) -> usize {
+    use quick_xml::escape::EscapeError;
+    match e {
+        EscapeError::UnrecognizedEntity(r, _) | EscapeError::UnterminatedEntity(r) => r.start,
+        EscapeError::InvalidCharRef(_) => 0,
+    }
+}
+
+/// Malformed or duplicate attributes, and bad entity syntax in values. `tag_start` is the byte
+/// offset of the tag's `<` in `input`.
+fn check_attributes(input: &[u8], tag_start: usize, e: &quick_xml::events::BytesStart<'_>) -> Result<(), AppError> {
+    for attr in e.attributes() {
+        let attr = attr.map_err(|err| {
+            use quick_xml::events::attributes::AttrError;
+            let pos = match err {
+                AttrError::ExpectedEq(p)
+                | AttrError::ExpectedValue(p)
+                | AttrError::UnquotedValue(p)
+                | AttrError::ExpectedQuote(p, _)
+                | AttrError::Duplicated(p, _) => p,
+            };
+            AppError::parse_at(input, tag_start + pos, format!("invalid attribute: {err}"))
+        })?;
+        check_escapes(&attr.value).map_err(|err| {
+            AppError::parse_at(
+                input,
+                tag_start,
+                format!("invalid attribute {}: {err}", String::from_utf8_lossy(attr.key.as_ref())),
+            )
+        })?;
+    }
+    Ok(())
+}
+
 fn tokenize(input: &[u8]) -> Result<Vec<Tok>, AppError> {
     let mut reader = Reader::from_reader(input);
     let cfg = reader.config_mut();
@@ -55,6 +96,7 @@ fn tokenize(input: &[u8]) -> Result<Vec<Tok>, AppError> {
         match ev {
             Event::Eof => break,
             Event::Start(e) => {
+                check_attributes(input, start, &e)?;
                 open.push((toks.len(), e.name().as_ref().to_vec()));
                 toks.push(mk(Kind::Start, has_preserve(&e)));
             }
@@ -84,12 +126,20 @@ fn tokenize(input: &[u8]) -> Result<Vec<Tok>, AppError> {
             }
             Event::Text(_) if is_ws(&input[start..end]) => toks.push(mk(Kind::Ws, false)),
             Event::Text(_) | Event::CData(_) => {
+                if matches!(ev, Event::Text(_)) {
+                    check_escapes(&input[start..end])
+                        .map_err(|err| AppError::parse_at(input, start + escape_offset(&err), format!("invalid text: {err}")))?;
+                }
                 if let Some(&(idx, _)) = open.last() {
                     toks[idx].verbatim = true;
                 }
                 toks.push(mk(Kind::Text, false));
             }
-            Event::Empty(_) | Event::Comment(_) | Event::Decl(_) | Event::PI(_) | Event::DocType(_) => {
+            Event::Empty(e) => {
+                check_attributes(input, start, &e)?;
+                toks.push(mk(Kind::Leaf, false));
+            }
+            Event::Comment(_) | Event::Decl(_) | Event::PI(_) | Event::DocType(_) => {
                 toks.push(mk(Kind::Leaf, false));
             }
             #[allow(unreachable_patterns)]
@@ -278,6 +328,28 @@ mod tests {
         let e = run("<a>\n  <b>text</b>\n", Mode::Pretty, Indent::Tab).unwrap_err();
         assert_eq!((e.kind, e.line, e.col), (ErrorKind::Parse, Some(1), Some(1)));
         assert!(e.message.contains("<a>"));
+    }
+
+    #[test]
+    fn bad_attributes_are_errors() {
+        let e = run("<r>\n  <a b=1/>\n</r>", Mode::Pretty, Indent::Tab).unwrap_err();
+        assert_eq!((e.kind, e.line), (ErrorKind::Parse, Some(2)));
+        assert!(e.col.is_some());
+        let e = run("<a b=\"1\" b=\"2\"/>", Mode::Minify, Indent::Tab).unwrap_err();
+        assert_eq!((e.kind, e.line), (ErrorKind::Parse, Some(1)));
+        assert!(e.message.contains("invalid attribute"), "{}", e.message);
+        let e = run("<a b=\"1\" b=\"2\"></a>", Mode::Pretty, Indent::Tab).unwrap_err();
+        assert_eq!(e.kind, ErrorKind::Parse);
+        assert_eq!(run("<a b=\"x & y\"/>", Mode::Pretty, Indent::Tab).unwrap_err().kind, ErrorKind::Parse);
+        assert_eq!(pretty("<a b=\"1\" c='2' d=\"&custom;\"/>"), "<a b=\"1\" c='2' d=\"&custom;\"/>");
+    }
+
+    #[test]
+    fn bad_entity_text_is_error() {
+        let e = run("<a>\n&bad & text</a>", Mode::Pretty, Indent::Tab).unwrap_err();
+        assert_eq!((e.kind, e.line, e.col), (ErrorKind::Parse, Some(2), Some(1)));
+        assert_eq!(run("<a>x &#xZZ; y</a>", Mode::Pretty, Indent::Tab).unwrap_err().kind, ErrorKind::Parse);
+        assert_eq!(run("<a>1 < 2</a>", Mode::Pretty, Indent::Tab).unwrap_err().kind, ErrorKind::Parse);
     }
 
     #[test]

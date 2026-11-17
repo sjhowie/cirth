@@ -11,9 +11,30 @@ async function ctx(page, rowName, item) {
   await page.locator('.ctx [role=menuitem]', { hasText: item }).click();
 }
 
-function recycleBinNames() {
-  const r = spawnSync('pwsh', ['-NoProfile', '-Command', "(New-Object -ComObject Shell.Application).NameSpace(10).Items() | ForEach-Object { $_.Name }"], { encoding: 'utf8' });
-  return r.stdout.split(/\r?\n/);
+/**
+ * Items in the user's Recycle Bin named exactly `fileName` (Explorer may hide the extension, so the bare name also counts;
+ * the name carries a timestamp, so it is unique). With purge, first deletes those items' backing $R file and $I metadata
+ * file, so the test leaves nothing in the bin. Returns the number of matches found before purging.
+ */
+function recycleBinItems(fileName, purge = false) {
+  const script = [
+    '$n = $env:E2E_BIN_NAME',
+    '$base = [IO.Path]::GetFileNameWithoutExtension($n)',
+    '$items = @((New-Object -ComObject Shell.Application).NameSpace(10).Items() | Where-Object { $_.Name -eq $n -or $_.Name -eq $base })',
+    "if ($env:E2E_BIN_PURGE -eq '1') {",
+    '  foreach ($i in $items) {',
+    '    $p = $i.Path',
+    "    $info = Join-Path (Split-Path $p) ('$I' + (Split-Path $p -Leaf).Substring(2))",
+    '    Remove-Item -LiteralPath $p, $info -Force -ErrorAction SilentlyContinue',
+    '  }',
+    '}',
+    '$items.Count',
+  ].join('\n');
+  const r = spawnSync('pwsh', ['-NoProfile', '-Command', script], {
+    encoding: 'utf8',
+    env: { ...process.env, E2E_BIN_NAME: fileName, E2E_BIN_PURGE: purge ? '1' : '0' },
+  });
+  return Number(r.stdout.trim().split(/\r?\n/).pop());
 }
 
 export async function run(t) {
@@ -56,7 +77,6 @@ export async function run(t) {
   await page.keyboard.type('new1.txt');
   await page.keyboard.press('Enter');
   await waitFor(() => existsSync(join(root, 'src', 'new1.txt')), { label: 'new1.txt on disk' });
-  t.ok(true, 'New File created on disk');
   await waitFor(async () => (await ui.activeTitle(page)) === 'new1.txt', { label: 'new1.txt opened' });
   t.ok(await row(page, 'new1.txt').count(), 'new file appears in the tree');
 
@@ -75,7 +95,6 @@ export async function run(t) {
   await page.keyboard.type('sibling.txt');
   await page.keyboard.press('Enter');
   await waitFor(() => existsSync(join(root, 'src', 'deep', 'sibling.txt')), { label: 'sibling.txt on disk' });
-  t.ok(true, 'New File on a file row creates a sibling');
 
   // Rename
   await ctx(page, 'new1.txt', 'Rename');
@@ -88,7 +107,6 @@ export async function run(t) {
   await waitFor(() => existsSync(join(root, 'src', 'renamed.txt')), { label: 'renamed on disk' });
   t.ok(!existsSync(join(root, 'src', 'new1.txt')), 'old name gone after rename');
   await waitFor(async () => (await ui.tabs(page)).some((x) => x.title === 'renamed.txt'), { label: 'open tab follows the rename' });
-  t.ok(true, 'open tab retitled after rename');
 
   // Alt+click renames (a file is not opened, a folder is not toggled); Escape cancels.
   const tabsBefore = (await ui.tabs(page)).length;
@@ -132,9 +150,10 @@ export async function run(t) {
     await ui.dialogButton(page, 'Delete').click();
     await waitFor(() => !existsSync(join(root, 'src', unique)), { label: 'file removed from disk', timeout: 30000 });
     t.info(`Delete to recycle bin took ${Date.now() - t0} ms (bin holds many items)`);
-    t.ok(true, 'Delete removed the file from disk');
     await waitFor(async () => (await row(page, unique).count()) === 0, { label: 'row removed' });
-    t.ok(recycleBinNames().some((n) => n.startsWith(unique.replace(/\.txt$/, ''))), 'file is in the recycle bin');
+    // Exact name match, then remove just that item from the user's bin and prove it is gone.
+    t.eq(recycleBinItems(unique, true), 1, 'file is in the recycle bin exactly once (then removed from it)');
+    t.eq(recycleBinItems(unique), 0, 'test file is gone from the recycle bin after cleanup');
   }
   t.eq(app.consoleErrors, [], 'no console errors');
 }

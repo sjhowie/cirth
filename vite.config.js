@@ -2,11 +2,28 @@ import { defineConfig } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
+// @ts-expect-error type error without @types/node package
+import { execFileSync } from "node:child_process";
 const host = process.env.TAURI_DEV_HOST;
+
+/** Short commit hash for Help > About; "unknown" outside a git checkout or without git. */
+function gitCommit() {
+  try {
+    return execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
   plugins: [sveltekit()],
+
+  // Build stamps read by src/lib/buildInfo.ts.
+  define: {
+    __CIRTH_COMMIT__: JSON.stringify(gitCommit()),
+    __CIRTH_BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
