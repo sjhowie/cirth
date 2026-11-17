@@ -55,7 +55,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVBQTg4NjEwRkQyREM4NkYKUldSdnlDMzlFSWFvV3NNOTRVNGhtOEJwQ2tLKzRZUVhmVDd2WmxIVS8xYmRqV3pnT05BcjF3T08K",
       "endpoints": ["https://github.com/sjhowie/cirth/releases/latest/download/latest.json"],
       "windows": {
         "installMode": "passive"
