@@ -35,7 +35,7 @@ fn is_ws(bytes: &[u8]) -> bool {
 }
 
 fn has_preserve(e: &quick_xml::events::BytesStart<'_>) -> bool {
-    e.attributes().flatten().any(|a| a.key.as_ref() == b"xml:space" && a.value.as_ref() == b"preserve")
+    e.attributes().flatten().any(|a| a.key.as_ref() == "xml:space" && a.value.as_ref() == "preserve")
 }
 
 /// Entity references are only checked for syntax: any named entity resolves (it may come from a
@@ -49,7 +49,7 @@ fn escape_offset(e: &quick_xml::escape::EscapeError) -> usize {
     use quick_xml::escape::EscapeError;
     match e {
         EscapeError::UnrecognizedEntity(r, _) | EscapeError::UnterminatedEntity(r) => r.start,
-        EscapeError::InvalidCharRef(_) => 0,
+        EscapeError::InvalidCharRef(_) | EscapeError::TooManyNestedEntities => 0,
     }
 }
 
@@ -68,11 +68,11 @@ fn check_attributes(input: &[u8], tag_start: usize, e: &quick_xml::events::Bytes
             };
             AppError::parse_at(input, tag_start + pos, format!("invalid attribute: {err}"))
         })?;
-        check_escapes(&attr.value).map_err(|err| {
+        check_escapes(attr.value.as_bytes()).map_err(|err| {
             AppError::parse_at(
                 input,
                 tag_start,
-                format!("invalid attribute {}: {err}", String::from_utf8_lossy(attr.key.as_ref())),
+                format!("invalid attribute {}: {err}", attr.key.as_ref()),
             )
         })?;
     }
@@ -97,12 +97,12 @@ fn tokenize(input: &[u8]) -> Result<Vec<Tok>, AppError> {
             Event::Eof => break,
             Event::Start(e) => {
                 check_attributes(input, start, &e)?;
-                open.push((toks.len(), e.name().as_ref().to_vec()));
+                open.push((toks.len(), e.name().as_ref().as_bytes().to_vec()));
                 toks.push(mk(Kind::Start, has_preserve(&e)));
             }
             Event::End(e) => {
                 match open.pop() {
-                    Some((_, name)) if name == e.name().as_ref() => {}
+                    Some((_, name)) if name == e.name().as_ref().as_bytes() => {}
                     Some((_, name)) => {
                         return Err(AppError::parse_at(
                             input,
@@ -110,7 +110,7 @@ fn tokenize(input: &[u8]) -> Result<Vec<Tok>, AppError> {
                             format!(
                                 "mismatched end tag: expected </{}>, found </{}>",
                                 String::from_utf8_lossy(&name),
-                                String::from_utf8_lossy(e.name().as_ref())
+                                e.name().as_ref()
                             ),
                         ));
                     }
@@ -118,15 +118,16 @@ fn tokenize(input: &[u8]) -> Result<Vec<Tok>, AppError> {
                         return Err(AppError::parse_at(
                             input,
                             start,
-                            format!("unexpected end tag </{}>", String::from_utf8_lossy(e.name().as_ref())),
+                            format!("unexpected end tag </{}>", e.name().as_ref()),
                         ));
                     }
                 }
                 toks.push(mk(Kind::End, false));
             }
             Event::Text(_) if is_ws(&input[start..end]) => toks.push(mk(Kind::Ws, false)),
-            Event::Text(_) | Event::CData(_) => {
-                if matches!(ev, Event::Text(_)) {
+            // Since quick-xml 0.38 an entity reference in text (`&amp;`, `&#xZZ;`) is its own GeneralRef event.
+            Event::Text(_) | Event::GeneralRef(_) | Event::CData(_) => {
+                if !matches!(ev, Event::CData(_)) {
                     check_escapes(&input[start..end])
                         .map_err(|err| AppError::parse_at(input, start + escape_offset(&err), format!("invalid text: {err}")))?;
                 }
@@ -350,6 +351,34 @@ mod tests {
         assert_eq!((e.kind, e.line, e.col), (ErrorKind::Parse, Some(2), Some(1)));
         assert_eq!(run("<a>x &#xZZ; y</a>", Mode::Pretty, Indent::Tab).unwrap_err().kind, ErrorKind::Parse);
         assert_eq!(run("<a>1 < 2</a>", Mode::Pretty, Indent::Tab).unwrap_err().kind, ErrorKind::Parse);
+    }
+
+    #[test]
+    fn entity_refs_keep_surrounding_text() {
+        // quick-xml 0.38+ splits these into Text / GeneralRef events; the spaces around them must survive.
+        assert_eq!(pretty("<r><a> &amp; </a></r>"), "<r>\n  <a> &amp; </a>\n</r>");
+        assert_eq!(pretty("<r><a>&lt;&#x41;&custom;</a></r>"), "<r>\n  <a>&lt;&#x41;&custom;</a>\n</r>");
+        assert_eq!(
+            run("<r>\n  <a>&amp; <b>x</b> &gt;</a>\n</r>", Mode::Minify, Indent::Tab).unwrap(),
+            "<r><a>&amp; <b>x</b> &gt;</a></r>"
+        );
+        assert_eq!(
+            pretty("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r><a/></r>"),
+            "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n<r>\n  <a/>\n</r>"
+        );
+    }
+
+    #[test]
+    fn many_attributes_format_in_linear_time() {
+        // RUSTSEC-2026-0194: quick-xml before 0.41 checked duplicate attribute names in quadratic time.
+        let attrs: String = (0..50_000).map(|i| format!(" a{i}=\"{i}\"")).collect();
+        let xml = format!("<r><e{attrs}/></r>");
+        let t = std::time::Instant::now();
+        let out = run(&xml, Mode::Minify, Indent::Tab).unwrap();
+        assert_eq!(out.len(), xml.len());
+        assert!(t.elapsed() < std::time::Duration::from_secs(2), "{:?}", t.elapsed());
+        let dup = format!("<r><e{attrs} a7=\"x\"/></r>");
+        assert_eq!(run(&dup, Mode::Minify, Indent::Tab).unwrap_err().kind, ErrorKind::Parse);
     }
 
     #[test]

@@ -1,9 +1,9 @@
 <script lang="ts">
   import TreeNode from "./TreeNode.svelte";
-  import { cancelEdit, commitCreate, commitRename, entriesOf, explorer, isExpanded, startRename, toggleDir } from "$lib/explorer.svelte";
-  import { openPath } from "$lib/files";
-  import type { DirEntry } from "$lib/ipc";
-  import { samePath } from "$lib/paths";
+  import { cancelEdit, commitCreate, commitRename, entriesOf, explorer, isExpanded, startRename, toggleDir } from "#lib/explorer.svelte.js";
+  import { openPath } from "#lib/files.js";
+  import type { DirEntry } from "#lib/ipc.js";
+  import { samePath } from "#lib/paths.js";
 
   let {
     dir,

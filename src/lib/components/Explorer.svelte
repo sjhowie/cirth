@@ -3,11 +3,11 @@
   import SearchBar from "./SearchBar.svelte";
   import SearchResults from "./SearchResults.svelte";
   import TreeNode from "./TreeNode.svelte";
-  import { copyFullPath, deleteEntry, explorer, startCreate, startRename } from "$lib/explorer.svelte";
-  import { openFolderDialog } from "$lib/files";
-  import type { DirEntry } from "$lib/ipc";
-  import { basename } from "$lib/paths";
-  import { search } from "$lib/search/search.svelte";
+  import { copyFullPath, deleteEntry, explorer, startCreate, startRename } from "#lib/explorer.svelte.js";
+  import { openFolderDialog } from "#lib/files.js";
+  import type { DirEntry } from "#lib/ipc.js";
+  import { basename } from "#lib/paths.js";
+  import { search } from "#lib/search/search.svelte.js";
 
   let menu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null);
 

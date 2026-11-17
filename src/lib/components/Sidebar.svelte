@@ -1,6 +1,6 @@
 <script lang="ts">
   import Explorer from "./Explorer.svelte";
-  import { layout } from "$lib/layout.svelte";
+  import { layout } from "#lib/layout.svelte.js";
 
   function startDrag(e: PointerEvent): void {
     const startX = e.clientX;

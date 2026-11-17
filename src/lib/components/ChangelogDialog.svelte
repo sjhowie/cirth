@@ -1,9 +1,9 @@
 <script lang="ts">
   import changelogMd from "../../../CHANGELOG.md?raw";
-  import { formatReleaseDate, parseChangelog, visibleReleases } from "$lib/changelog";
-  import { dialogs } from "$lib/dialogs.svelte";
-  import { helpDialogs, showWhatsNewIfUpdated } from "$lib/helpDialogs.svelte";
-  import { updater } from "$lib/updater.svelte";
+  import { formatReleaseDate, parseChangelog, visibleReleases } from "#lib/changelog.js";
+  import { dialogs } from "#lib/dialogs.svelte.js";
+  import { helpDialogs, showWhatsNewIfUpdated } from "#lib/helpDialogs.svelte.js";
+  import { updater } from "#lib/updater.svelte.js";
 
   // Items are HTML-escaped by the parser; only <code> is added back.
   const releases = visibleReleases(parseChangelog(changelogMd), import.meta.env.DEV);

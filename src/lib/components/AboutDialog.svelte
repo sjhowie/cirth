@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { buildCommit, buildDate } from "$lib/buildInfo";
-  import { dialogs } from "$lib/dialogs.svelte";
-  import { helpDialogs, openChangelog } from "$lib/helpDialogs.svelte";
-  import { isTauri } from "$lib/ipc";
-  import { reportError } from "$lib/notifications.svelte";
-  import { checkForUpdate, updater } from "$lib/updater.svelte";
+  import { buildCommit, buildDate } from "#lib/buildInfo.js";
+  import { dialogs } from "#lib/dialogs.svelte.js";
+  import { helpDialogs, openChangelog } from "#lib/helpDialogs.svelte.js";
+  import { isTauri } from "#lib/ipc.js";
+  import { reportError } from "#lib/notifications.svelte.js";
+  import { checkForUpdate, updater } from "#lib/updater.svelte.js";
 
   const REPO_URL = "https://github.com/sjhowie/cirth";
   let tauriVersion = $state("");

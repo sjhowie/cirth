@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { answerDialog, dialogs } from "$lib/dialogs.svelte";
+  import { answerDialog, dialogs } from "#lib/dialogs.svelte.js";
 
   const current = $derived(dialogs.queue[0]);
 

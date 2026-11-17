@@ -1,19 +1,19 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
-  import { listCommands, onCommandsChanged, runCommand, type Command } from "$lib/commands";
-  import { activateTab, getView, revealPosition, status } from "$lib/editorHost.svelte";
-  import { explorer } from "$lib/explorer.svelte";
-  import { openPath } from "$lib/files";
-  import { formatBinding } from "$lib/keybindings";
-  import { isMac } from "$lib/platform";
-  import { tabsStore } from "$lib/tabs.svelte";
-  import { normPath } from "$lib/paths";
-  import { relativeTo } from "$lib/search/results";
-  import { buildCandidates, candidatePath, type FileCandidate } from "$lib/palette/candidates";
-  import { ensureFileIndex, fileIndex } from "$lib/palette/fileIndex.svelte";
-  import { fuzzyFilter, highlightSegments, type Segment } from "$lib/palette/fuzzy";
-  import { parsePaletteInput } from "$lib/palette/input";
-  import { closePalette, palette, recents, recordCommand, recordFile } from "$lib/palette/state.svelte";
+  import { listCommands, onCommandsChanged, runCommand, type Command } from "#lib/commands.js";
+  import { activateTab, getView, revealPosition, status } from "#lib/editorHost.svelte.js";
+  import { explorer } from "#lib/explorer.svelte.js";
+  import { openPath } from "#lib/files.js";
+  import { formatBinding } from "#lib/keybindings.js";
+  import { isMac } from "#lib/platform.js";
+  import { tabsStore } from "#lib/tabs.svelte.js";
+  import { normPath } from "#lib/paths.js";
+  import { relativeTo } from "#lib/search/results.js";
+  import { buildCandidates, candidatePath, type FileCandidate } from "#lib/palette/candidates.js";
+  import { ensureFileIndex, fileIndex } from "#lib/palette/fileIndex.svelte.js";
+  import { fuzzyFilter, highlightSegments, type Segment } from "#lib/palette/fuzzy.js";
+  import { parsePaletteInput } from "#lib/palette/input.js";
+  import { closePalette, palette, recents, recordCommand, recordFile } from "#lib/palette/state.svelte.js";
 
   const MAX_ROWS = 200;
 

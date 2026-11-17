@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { activateTab } from "$lib/editorHost.svelte";
-  import { closeTab } from "$lib/files";
-  import { tabsStore } from "$lib/tabs.svelte";
+  import { activateTab } from "#lib/editorHost.svelte.js";
+  import { closeTab } from "#lib/files.js";
+  import { tabsStore } from "#lib/tabs.svelte.js";
 
   let strip: HTMLDivElement;
 

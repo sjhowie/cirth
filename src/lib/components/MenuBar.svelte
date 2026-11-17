@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { listCommands, runCommand, type Command } from "$lib/commands";
-  import { formatBinding } from "$lib/keybindings";
-  import { isMac } from "$lib/platform";
+  import { listCommands, runCommand, type Command } from "#lib/commands.js";
+  import { formatBinding } from "#lib/keybindings.js";
+  import { isMac } from "#lib/platform.js";
 
   const menus = ["File", "Edit", "View", "Format", "Help"];
   let openMenu = $state<string | null>(null);

@@ -2,8 +2,8 @@
   import { onMount } from "svelte";
   import { EditorView } from "@codemirror/view";
   import { EditorState } from "@codemirror/state";
-  import { attachView, detachView } from "$lib/editorHost.svelte";
-  import { tabsStore } from "$lib/tabs.svelte";
+  import { attachView, detachView } from "#lib/editorHost.svelte.js";
+  import { tabsStore } from "#lib/tabs.svelte.js";
 
   let host: HTMLDivElement;
 

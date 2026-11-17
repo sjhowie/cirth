@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { canReplaceAll, clearSearch, replaceAll, runSearch, scheduleSearch, search } from "$lib/search/search.svelte";
+  import { canReplaceAll, clearSearch, replaceAll, runSearch, scheduleSearch, search } from "#lib/search/search.svelte.js";
 
   let queryEl = $state<HTMLInputElement | null>(null);
 

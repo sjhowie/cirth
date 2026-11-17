@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { explorer } from "$lib/explorer.svelte";
-  import { relativeTo, splitPreview, summaryText } from "$lib/search/results";
-  import { openMatch, search } from "$lib/search/search.svelte";
+  import { explorer } from "#lib/explorer.svelte.js";
+  import { relativeTo, splitPreview, summaryText } from "#lib/search/results.js";
+  import { openMatch, search } from "#lib/search/search.svelte.js";
 
   const groups = $derived.by(() => {
     void search.version;

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { keepMine, reloadFromDisk } from "$lib/watch.svelte";
-  import { tabsStore } from "$lib/tabs.svelte";
+  import { keepMine, reloadFromDisk } from "#lib/watch.svelte.js";
+  import { tabsStore } from "#lib/tabs.svelte.js";
 
   const tab = $derived(tabsStore.active);
 </script>

@@ -1,5 +1,7 @@
 import { defineConfig } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
+import adapter from "@sveltejs/adapter-static";
+import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
 // @ts-expect-error type error without @types/node package
@@ -17,7 +19,17 @@ function gitCommit() {
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [sveltekit()],
+  // SvelteKit 3 takes its config here (svelte.config.js is no longer read).
+  // Tauri has no Node.js server for SSR, so adapter-static with an index.html fallback runs the app as an SPA:
+  // https://svelte.dev/docs/kit/single-page-apps and https://v2.tauri.app/start/frontend/sveltekit/
+  plugins: [
+    sveltekit({
+      preprocess: vitePreprocess(),
+      adapter: adapter({ fallback: "index.html" }),
+      // Kit 3 polls for a new deployment hourly by default; the app ships inside the exe and updates through the Tauri updater.
+      version: { pollInterval: 0 },
+    }),
+  ],
 
   // Build stamps read by src/lib/buildInfo.ts.
   define: {

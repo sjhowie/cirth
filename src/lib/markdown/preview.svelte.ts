@@ -3,12 +3,12 @@
  * the per-tab show/hide rule (hidden on non-Markdown tabs, restored when returning to a
  * Markdown tab that had it open).
  */
-import MarkdownPreview from "$lib/components/MarkdownPreview.svelte";
-import { registerCommand } from "$lib/commands";
-import { MARKDOWN_LANG } from "$lib/editor/languages";
-import { layout, setPreviewComponent, type PreviewMode } from "$lib/layout.svelte";
-import { notifyInfo } from "$lib/notifications.svelte";
-import { tabsStore } from "$lib/tabs.svelte";
+import MarkdownPreview from "#lib/components/MarkdownPreview.svelte";
+import { registerCommand } from "#lib/commands.js";
+import { MARKDOWN_LANG } from "#lib/editor/languages.js";
+import { layout, setPreviewComponent, type PreviewMode } from "#lib/layout.svelte.js";
+import { notifyInfo } from "#lib/notifications.svelte.js";
+import { tabsStore } from "#lib/tabs.svelte.js";
 
 /** Preview mode chosen per tab id; tabs absent from the map have the preview off. */
 const tabModes = new Map<number, PreviewMode>();

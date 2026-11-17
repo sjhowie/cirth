@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { getActiveText, getView, onEditorUpdate } from "$lib/editorHost.svelte";
-  import { openPath } from "$lib/files";
-  import { isTauri } from "$lib/ipc";
-  import { highlightBlocks } from "$lib/markdown/highlight";
-  import { isExternalRef, resolveRelativePath, slugify, splitRef } from "$lib/markdown/links";
-  import { renderMarkdown } from "$lib/markdown/render";
+  import { getActiveText, getView, onEditorUpdate } from "#lib/editorHost.svelte.js";
+  import { openPath } from "#lib/files.js";
+  import { isTauri } from "#lib/ipc.js";
+  import { highlightBlocks } from "#lib/markdown/highlight.js";
+  import { isExternalRef, resolveRelativePath, slugify, splitRef } from "#lib/markdown/links.js";
+  import { renderMarkdown } from "#lib/markdown/render.js";
   import {
     collectAnchors,
     ECHO_MS,
@@ -16,11 +16,11 @@
     scrollEditorToLine,
     topToLine,
     type Anchor,
-  } from "$lib/markdown/scrollSync";
-  import "$lib/markdown/preview.css";
-  import { notifyInfo, reportError } from "$lib/notifications.svelte";
-  import { dirname } from "$lib/paths";
-  import { tabsStore } from "$lib/tabs.svelte";
+  } from "#lib/markdown/scrollSync.js";
+  import "#lib/markdown/preview.css";
+  import { notifyInfo, reportError } from "#lib/notifications.svelte.js";
+  import { dirname } from "#lib/paths.js";
+  import { tabsStore } from "#lib/tabs.svelte.js";
 
   const DEBOUNCE_MS = 150;
   const DEBOUNCE_LIGHT_MS = 500;

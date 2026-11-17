@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { status } from "$lib/editorHost.svelte";
-  import { listLanguageNames } from "$lib/editor/languages";
-  import { encodingChoices, encodingLabel, eolChoices, eolFromLabel, eolLabel } from "$lib/encodings";
-  import { setTabEncoding, setTabEol, setTabLanguage } from "$lib/files";
-  import { reportError } from "$lib/notifications.svelte";
-  import { chordHint } from "$lib/keys.svelte";
-  import { layout } from "$lib/layout.svelte";
-  import { settings } from "$lib/settings.svelte";
-  import { tabsStore } from "$lib/tabs.svelte";
-  import { installUpdate, updater } from "$lib/updater.svelte";
+  import { status } from "#lib/editorHost.svelte.js";
+  import { listLanguageNames } from "#lib/editor/languages.js";
+  import { encodingChoices, encodingLabel, eolChoices, eolFromLabel, eolLabel } from "#lib/encodings.js";
+  import { setTabEncoding, setTabEol, setTabLanguage } from "#lib/files.js";
+  import { reportError } from "#lib/notifications.svelte.js";
+  import { chordHint } from "#lib/keys.svelte.js";
+  import { layout } from "#lib/layout.svelte.js";
+  import { settings } from "#lib/settings.svelte.js";
+  import { tabsStore } from "#lib/tabs.svelte.js";
+  import { installUpdate, updater } from "#lib/updater.svelte.js";
   import Picker from "./Picker.svelte";
 
   type Which = "language" | "encoding" | "eol" | null;

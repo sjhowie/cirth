@@ -1,27 +1,27 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
-  import { registerAppCommands } from "$lib/appCommands";
-  import ChangedBanner from "$lib/components/ChangedBanner.svelte";
-  import Editor from "$lib/components/Editor.svelte";
-  import MenuBar from "$lib/components/MenuBar.svelte";
-  import Modal from "$lib/components/Modal.svelte";
-  import SettingsPanel from "$lib/components/SettingsPanel.svelte";
-  import Sidebar from "$lib/components/Sidebar.svelte";
-  import StatusBar from "$lib/components/StatusBar.svelte";
-  import TabBar from "$lib/components/TabBar.svelte";
-  import Toasts from "$lib/components/Toasts.svelte";
-  import { reconfigureAllTabs } from "$lib/editorHost.svelte";
-  import { confirmExit, newTab, openStartupPaths } from "$lib/files";
-  import { isTauri } from "$lib/ipc";
-  import { installKeyHandler } from "$lib/keys.svelte";
-  import { layout } from "$lib/layout.svelte";
-  import { registerMarkdownPreview } from "$lib/markdown/preview.svelte";
-  import { reportError } from "$lib/notifications.svelte";
-  import { flushSettings, initSettings, isDark, settings, themeState } from "$lib/settings.svelte";
-  import { tabsStore } from "$lib/tabs.svelte";
-  import { startUpdater } from "$lib/updater.svelte";
-  import { startWatching, syncWatchedPaths } from "$lib/watch.svelte";
-  import { registerPaletteAndSearch } from "$lib/palette/register";
+  import { registerAppCommands } from "#lib/appCommands.js";
+  import ChangedBanner from "#lib/components/ChangedBanner.svelte";
+  import Editor from "#lib/components/Editor.svelte";
+  import MenuBar from "#lib/components/MenuBar.svelte";
+  import Modal from "#lib/components/Modal.svelte";
+  import SettingsPanel from "#lib/components/SettingsPanel.svelte";
+  import Sidebar from "#lib/components/Sidebar.svelte";
+  import StatusBar from "#lib/components/StatusBar.svelte";
+  import TabBar from "#lib/components/TabBar.svelte";
+  import Toasts from "#lib/components/Toasts.svelte";
+  import { reconfigureAllTabs } from "#lib/editorHost.svelte.js";
+  import { confirmExit, newTab, openStartupPaths } from "#lib/files.js";
+  import { isTauri } from "#lib/ipc.js";
+  import { installKeyHandler } from "#lib/keys.svelte.js";
+  import { layout } from "#lib/layout.svelte.js";
+  import { registerMarkdownPreview } from "#lib/markdown/preview.svelte.js";
+  import { reportError } from "#lib/notifications.svelte.js";
+  import { flushSettings, initSettings, isDark, settings, themeState } from "#lib/settings.svelte.js";
+  import { tabsStore } from "#lib/tabs.svelte.js";
+  import { startUpdater } from "#lib/updater.svelte.js";
+  import { startWatching, syncWatchedPaths } from "#lib/watch.svelte.js";
+  import { registerPaletteAndSearch } from "#lib/palette/register.js";
 
   // Theme: chrome CSS variables + every tab's CodeMirror theme/font/indent/wrap.
   $effect(() => {

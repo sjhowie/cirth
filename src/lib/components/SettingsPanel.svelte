@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { layout } from "$lib/layout.svelte";
-  import { settings, updateSettings } from "$lib/settings.svelte";
-  import type { FormatIndent, ThemeSetting } from "$lib/ipc";
-  import { checkForUpdate, updater } from "$lib/updater.svelte";
+  import { layout } from "#lib/layout.svelte.js";
+  import { settings, updateSettings } from "#lib/settings.svelte.js";
+  import type { FormatIndent, ThemeSetting } from "#lib/ipc.js";
+  import { checkForUpdate, updater } from "#lib/updater.svelte.js";
 
   function close(): void {
     layout.settingsOpen = false;

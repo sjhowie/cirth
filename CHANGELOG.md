@@ -1,6 +1,10 @@
 # Changelog
 What changed in each Cirth release, newest first.
 
+## Unreleased
+### Fixed
+- Fixed Format XML slowing to a crawl on a tag with tens of thousands of attributes.
+
 ## 0.3.0 - 2026-11-17
 ### New
 - Added Help > About Cirth, with the version, build and a link to the source code.
