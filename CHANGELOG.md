@@ -1,7 +1,7 @@
 # Changelog
 What changed in each Cirth release, newest first.
 
-## Unreleased
+## 0.3.1 - 2026-11-17
 ### Fixed
 - Fixed Format XML slowing to a crawl on a tag with tens of thousands of attributes.
 
