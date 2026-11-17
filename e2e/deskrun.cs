@@ -75,12 +75,16 @@ static class DeskRun
         PROCESS_INFORMATION pi;
         if (!CreateProcess(null, cmd, IntPtr.Zero, IntPtr.Zero, true, CREATE_UNICODE_ENVIRONMENT, IntPtr.Zero, null, ref si, out pi))
             throw new Exception("CreateProcess failed: " + Marshal.GetLastWin32Error());
-        // Kill the app (and its WebView2 children) if we are killed.
-        IntPtr job = CreateJobObject(IntPtr.Zero, null);
-        var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
-        info.Basic.LimitFlags = 0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-        SetInformationJobObject(job, 9, ref info, Marshal.SizeOf(typeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION)));
-        AssignProcessToJobObject(job, pi.hProcess);
+        // Kill the app (and its WebView2 children) if we are killed. DESKRUN_NO_JOB=1 skips this, for an app that must
+        // outlive us: the self-update test, where the app exits and its installer has to keep running.
+        if (Environment.GetEnvironmentVariable("DESKRUN_NO_JOB") != "1")
+        {
+            IntPtr job = CreateJobObject(IntPtr.Zero, null);
+            var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
+            info.Basic.LimitFlags = 0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            SetInformationJobObject(job, 9, ref info, Marshal.SizeOf(typeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION)));
+            AssignProcessToJobObject(job, pi.hProcess);
+        }
         Console.Out.WriteLine("PID " + pi.dwProcessId);
         Console.Out.Flush();
         WaitForSingleObject(pi.hProcess, 0xFFFFFFFF);
