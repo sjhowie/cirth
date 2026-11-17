@@ -69,9 +69,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 
   if (push) {
     git('fetch', '.', 'dev:main'); // fast-forward only; fails if main has diverged
-    run('git', ['push', 'origin', 'dev', 'main', tag]);
+    run('git', ['push', 'origin', 'dev', 'main']);
+    // The tag goes in its own push: pushed together with the branches (v0.2.0), GitHub started no workflow run.
+    run('git', ['push', 'origin', tag]);
     console.log(`release: pushed. GitHub Actions builds ${tag}: https://github.com/sjhowie/cirth/actions`);
   } else {
-    console.log('release: to publish, run:\n  git fetch . dev:main\n  git push origin dev main ' + tag);
+    console.log('release: to publish, run:\n  git fetch . dev:main\n  git push origin dev main\n  git push origin ' + tag);
   }
 }
