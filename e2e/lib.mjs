@@ -10,17 +10,17 @@ import { chromium } from 'playwright-core';
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /** SE_EXE overrides the exe (e.g. an installed release build); the release build bundles the frontend, so no Vite then. */
 export const USE_CUSTOM_EXE = !!process.env.SE_EXE;
-export const EXE = process.env.SE_EXE ?? join(ROOT, 'src-tauri', 'target', 'debug', 'simple-editor.exe');
+export const EXE = process.env.SE_EXE ?? join(ROOT, 'src-tauri', 'target', 'debug', 'cirth.exe');
 export const CDP_PORT = 9222;
 export const VITE_PORT = 1420;
-export const SETTINGS_FILE = join(process.env.APPDATA ?? '', 'com.simpleeditor.app', 'settings.json');
+export const SETTINGS_FILE = join(process.env.APPDATA ?? '', 'io.github.sjhowie.cirth', 'settings.json');
 
 /**
  * The app runs on a hidden Windows desktop (`deskrun.cs`), so test windows never reach the user's screen or take focus.
  * CDP input needs no OS focus, and WebView2 renders normally there. SE_E2E_VISIBLE=1 shows the windows (for debugging).
  */
 export const DESKRUN = process.platform === 'win32' && process.env.SE_E2E_VISIBLE !== '1' ? buildDeskrun() : null;
-export const DESKTOP = 'SimpleEditorE2E';
+export const DESKTOP = 'CirthE2E';
 /** Launcher pid -> app pid, when launched through DESKRUN. */
 const appPids = new Map();
 /** Spawns the app exe directly (on the hidden desktop under DESKRUN); for launches that don't need CDP. */
@@ -178,13 +178,14 @@ export function processTreeMemory(pid) {
 export async function launchApp({ args = [], multiInstance = true } = {}) {
   if (!existsSync(EXE)) throw new Error(`Missing ${EXE}; run cargo build in src-tauri first.`);
   const proc = spawn(DESKRUN ?? EXE, DESKRUN ? ['run', DESKTOP, EXE, ...args] : args, {
-    // MULTI_INSTANCE: the single-instance plugin would swallow this launch into any SimpleEditor the user has open.
+    // MULTI_INSTANCE: the single-instance plugin would swallow this launch into any Cirth the user has open.
     // Only the single-instance scenario passes multiInstance: false.
-    // USER_DATA_FOLDER: a running SimpleEditor holds the default WebView2 profile, and WebView2 refuses a second
+    // USER_DATA_FOLDER: a running Cirth holds the default WebView2 profile, and WebView2 refuses a second
     // process on that profile with different browser arguments (0x8007139F).
     env: {
       ...process.env,
-      ...(multiInstance ? { SIMPLEEDITOR_MULTI_INSTANCE: '1' } : {}),
+      ...(multiInstance ? { CIRTH_MULTI_INSTANCE: '1' } : {}),
+      CIRTH_NO_UPDATE_CHECK: '1', // no GitHub calls from tests
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}`,
       WEBVIEW2_USER_DATA_FOLDER: join(tmpdir(), 'se-e2e-webview2'),
     },

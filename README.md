@@ -1,9 +1,9 @@
-# SimpleEditor
+# Cirth
 
 A lightweight desktop text editor in the spirit of Sublime Text and Zed. It's built with Tauri 2 (Rust) and Svelte 5 + CodeMirror 6.
 
 - Tabs and a folder sidebar: create, rename and delete files, copy an item's full path, with file watching. The sidebar stays hidden until a folder is open.
-- "Open with SimpleEditor" in the Windows Explorer menu for files, folders and folder backgrounds (on Windows 11 it's under "Show more options"). A second launch hands its files to the window that's already open.
+- "Open with Cirth" in the Windows Explorer menu for files, folders and folder backgrounds (on Windows 11 it's under "Show more options"). A second launch hands its files to the window that's already open.
 - Syntax highlighting for about 100 languages.
 - JSON and XML: format and minify, with errors shown at their line and column.
 - Markdown: a live preview side by side or on its own, with synced scrolling, highlighted code blocks and local images.
@@ -12,6 +12,7 @@ A lightweight desktop text editor in the spirit of Sublime Text and Zed. It's bu
 - Encoding (UTF-8, UTF-8 with BOM, UTF-16 LE/BE, legacy code pages) and line endings (LF/CRLF) are detected, kept on save, and switchable from the status bar.
 - Files of 100 MB and more stay editable. At 10 MB and above (a setting), a file opens in **light mode**, with no highlighting, folding or wrapping.
 - Light, dark or system theme.
+- Updates itself: when a new release is out, the status bar shows "Update to X.Y.Z" (Help → Check for Updates checks now).
 
 No compiling, debugging or extensions; that's on purpose.
 
@@ -53,7 +54,21 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
 `npm run e2e` runs the real-app suite (13 scenarios). It starts Vite and launches the debug exe (`cargo build` first), then drives WebView2 over its remote-debugging port with `playwright-core` and checks the bytes on disk. The app runs on a hidden Windows desktop, so you can keep working while it runs; set `$env:SE_E2E_VISIBLE = '1'` to watch it. Set `SE_EXE` to an installed exe to test a release build instead. The native Open and Save dialogs aren't covered.
 
-Build the installers (NSIS per-user `.exe` and `.msi`, written to `src-tauri/target/release/bundle/`):
+## Install
+
+Download the `_x64-setup.exe` installer (per user, no admin rights) from the [latest release](https://github.com/sjhowie/cirth/releases/latest). From then on, Cirth offers its own updates.
+
+## Release
+
+`package.json` holds the version; `tauri.conf.json` reads it from there. On `dev`, with a clean tree:
+
+```powershell
+npm run release -- patch --push    # or minor, major, or an exact X.Y.Z
+```
+
+That bumps the version in `package.json`, `Cargo.toml` and the lock files, commits `Release vX.Y.Z`, tags it, fast-forwards `main`, and pushes `dev`, `main` and the tag. Without `--push` it stops after the tag and prints the push commands. The tag starts `.github/workflows/release.yml`, which builds the signed installers and `latest.json` on GitHub Actions (about 15 minutes) and publishes the release. The signing key's private half lives only on your machine (`%USERPROFILE%\.tauri\cirth.key`) and in the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Losing it means installed copies can no longer update.
+
+Build the installers locally (NSIS per-user `.exe` and `.msi`, written to `src-tauri/target/release/bundle/`; unsigned for the updater, which is fine for a local install):
 
 ```powershell
 npm run tauri build

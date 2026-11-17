@@ -3,7 +3,7 @@
   import { formatBinding } from "$lib/keybindings";
   import { isMac } from "$lib/platform";
 
-  const menus = ["File", "Edit", "View", "Format"];
+  const menus = ["File", "Edit", "View", "Format", "Help"];
   let openMenu = $state<string | null>(null);
   let items = $state<Command[]>([]);
 

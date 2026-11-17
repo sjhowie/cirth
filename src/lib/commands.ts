@@ -2,7 +2,7 @@
  * Command registry. Anything the user can trigger (menu, palette, keyboard) is a Command.
  *
  * Extension point for later features: call `registerCommand({...})` once at startup.
- * The menu bar lists commands whose `category` is File / Edit / View / Format; the command
+ * The menu bar lists commands whose `category` is File / Edit / View / Format / Help; the command
  * palette lists everything via `listCommands()`.
  */
 export interface Command {

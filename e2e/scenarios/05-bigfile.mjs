@@ -84,8 +84,8 @@ export async function run(t) {
   const snap = (label) => {
     const m = processTreeMemory(app.pid);
     const web = m['msedgewebview2.exe'] ?? 0;
-    mem[label] = { webview2MB: +mb(web), appMB: +mb(m['simple-editor.exe'] ?? 0) };
-    t.info(`memory ${label}: WebView2 children ${mb(web)} MB, simple-editor.exe ${mem[label].appMB} MB`);
+    mem[label] = { webview2MB: +mb(web), appMB: +mb(m['cirth.exe'] ?? 0) };
+    t.info(`memory ${label}: WebView2 children ${mb(web)} MB, cirth.exe ${mem[label].appMB} MB`);
   };
   snap('baseline');
 

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Explorer context menu "Open with SimpleEditor" for the MSI (per-machine, so HKLM\Software\Classes).
+<!-- Explorer context menu "Open with Cirth" for the MSI (per-machine, so HKLM\Software\Classes).
      Component-owned registry keys are removed on uninstall. Referenced via bundle.windows.wix.componentRefs. -->
 <?if $(sys.BUILDARCH)="x86"?>
   <?define Win64 = "no" ?>
@@ -10,26 +10,26 @@
   <Fragment>
     <DirectoryRef Id="INSTALLDIR">
       <Component Id="ExplorerContextMenu" Guid="*" Win64="$(var.Win64)">
-        <RegistryKey Root="HKLM" Key="Software\Classes\*\shell\SimpleEditor">
-          <RegistryValue Type="string" Value="Open with SimpleEditor" KeyPath="yes" />
-          <RegistryValue Name="Icon" Type="string" Value="&quot;[INSTALLDIR]simple-editor.exe&quot;" />
+        <RegistryKey Root="HKLM" Key="Software\Classes\*\shell\Cirth">
+          <RegistryValue Type="string" Value="Open with Cirth" KeyPath="yes" />
+          <RegistryValue Name="Icon" Type="string" Value="&quot;[INSTALLDIR]cirth.exe&quot;" />
         </RegistryKey>
-        <RegistryKey Root="HKLM" Key="Software\Classes\*\shell\SimpleEditor\command">
-          <RegistryValue Type="string" Value="&quot;[INSTALLDIR]simple-editor.exe&quot; &quot;%1&quot;" />
+        <RegistryKey Root="HKLM" Key="Software\Classes\*\shell\Cirth\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLDIR]cirth.exe&quot; &quot;%1&quot;" />
         </RegistryKey>
-        <RegistryKey Root="HKLM" Key="Software\Classes\Directory\shell\SimpleEditor">
-          <RegistryValue Type="string" Value="Open with SimpleEditor" />
-          <RegistryValue Name="Icon" Type="string" Value="&quot;[INSTALLDIR]simple-editor.exe&quot;" />
+        <RegistryKey Root="HKLM" Key="Software\Classes\Directory\shell\Cirth">
+          <RegistryValue Type="string" Value="Open with Cirth" />
+          <RegistryValue Name="Icon" Type="string" Value="&quot;[INSTALLDIR]cirth.exe&quot;" />
         </RegistryKey>
-        <RegistryKey Root="HKLM" Key="Software\Classes\Directory\shell\SimpleEditor\command">
-          <RegistryValue Type="string" Value="&quot;[INSTALLDIR]simple-editor.exe&quot; &quot;%1&quot;" />
+        <RegistryKey Root="HKLM" Key="Software\Classes\Directory\shell\Cirth\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLDIR]cirth.exe&quot; &quot;%1&quot;" />
         </RegistryKey>
-        <RegistryKey Root="HKLM" Key="Software\Classes\Directory\Background\shell\SimpleEditor">
-          <RegistryValue Type="string" Value="Open with SimpleEditor" />
-          <RegistryValue Name="Icon" Type="string" Value="&quot;[INSTALLDIR]simple-editor.exe&quot;" />
+        <RegistryKey Root="HKLM" Key="Software\Classes\Directory\Background\shell\Cirth">
+          <RegistryValue Type="string" Value="Open with Cirth" />
+          <RegistryValue Name="Icon" Type="string" Value="&quot;[INSTALLDIR]cirth.exe&quot;" />
         </RegistryKey>
-        <RegistryKey Root="HKLM" Key="Software\Classes\Directory\Background\shell\SimpleEditor\command">
-          <RegistryValue Type="string" Value="&quot;[INSTALLDIR]simple-editor.exe&quot; &quot;%V&quot;" />
+        <RegistryKey Root="HKLM" Key="Software\Classes\Directory\Background\shell\Cirth\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLDIR]cirth.exe&quot; &quot;%V&quot;" />
         </RegistryKey>
       </Component>
     </DirectoryRef>

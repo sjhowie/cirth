@@ -2,6 +2,7 @@ mod error;
 mod files;
 mod format_json;
 mod format_xml;
+mod migrate;
 mod search;
 mod settings;
 mod tree;
@@ -13,7 +14,9 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_log::{Target, TargetKind};
 
 /// Set to `1` to skip the single-instance plugin (E2E launches many instances side by side).
-const MULTI_INSTANCE_ENV: &str = "SIMPLEEDITOR_MULTI_INSTANCE";
+const MULTI_INSTANCE_ENV: &str = "CIRTH_MULTI_INSTANCE";
+/// Set to `1` to stop the frontend's background update checks (E2E runs stay offline and deterministic).
+const NO_UPDATE_CHECK_ENV: &str = "CIRTH_NO_UPDATE_CHECK";
 const OPEN_PATHS_EVENT: &str = "app://open-paths";
 
 #[derive(Clone, Serialize)]
@@ -52,9 +55,14 @@ const BG_DARK: tauri::window::Color = tauri::window::Color(0x28, 0x2c, 0x34, 0xf
 /// The theme setting is also injected into the page so its first paint already uses the right theme (see app.html).
 fn create_main_window(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let config = app.config().app.windows.iter().find(|w| w.label == "main").cloned().ok_or("tauri.conf.json has no \"main\" window")?;
+    migrate::from_old_name(app.handle());
     let theme = settings::load(app.handle()).theme;
+    let update_check = !std::env::var(NO_UPDATE_CHECK_ENV).is_ok_and(|v| v == "1");
     let window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
-        .initialization_script(format!("window.__SIMPLEEDITOR_THEME__ = {};", serde_json::to_string(&theme)?))
+        .initialization_script(format!(
+            "window.__CIRTH_THEME__ = {}; window.__CIRTH_UPDATE_CHECK__ = {update_check};",
+            serde_json::to_string(&theme)?
+        ))
         .build()?;
     let dark = match theme {
         settings::Theme::Dark => true,
@@ -82,6 +90,8 @@ pub fn run() {
     } else {
         builder.plugin(tauri_plugin_single_instance::init(on_second_instance))
     };
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     builder
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -90,6 +100,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
         .manage(watch::WatchState::default())
         .manage(search::SearchState::default())
         .manage(upload::UploadState::default())

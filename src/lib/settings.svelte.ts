@@ -3,7 +3,7 @@ import { notifyInfo, reportError } from "./notifications.svelte";
 
 /** The theme setting Rust injected before the page loaded, so the first render already has the right theme. */
 function injectedTheme(): Settings["theme"] {
-  const t = typeof window === "undefined" ? undefined : (window as { __SIMPLEEDITOR_THEME__?: unknown }).__SIMPLEEDITOR_THEME__;
+  const t = typeof window === "undefined" ? undefined : (window as { __CIRTH_THEME__?: unknown }).__CIRTH_THEME__;
   return t === "light" || t === "dark" || t === "system" ? t : defaultSettings.theme;
 }
 

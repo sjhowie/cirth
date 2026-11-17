@@ -2,6 +2,7 @@
   import { layout } from "$lib/layout.svelte";
   import { settings, updateSettings } from "$lib/settings.svelte";
   import type { FormatIndent, ThemeSetting } from "$lib/ipc";
+  import { checkForUpdate, updater } from "$lib/updater.svelte";
 
   function close(): void {
     layout.settingsOpen = false;
@@ -65,7 +66,11 @@
         />
       </label>
       <p class="hint">Applies to files opened after the change; open tabs keep their mode.</p>
-      <div class="buttons"><button class="btn primary" onclick={close}>Close</button></div>
+      <div class="buttons">
+        <span class="version">Cirth {updater.version}</span>
+        <button class="btn" disabled={updater.phase !== "idle"} onclick={() => void checkForUpdate(true)}>Check for Updates</button>
+        <button class="btn primary" onclick={close}>Close</button>
+      </div>
     </div>
   </div>
 {/if}
@@ -111,6 +116,13 @@
   }
   .buttons {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
+    gap: 8px;
+  }
+  .version {
+    margin-right: auto;
+    color: var(--fg-dim);
+    font-size: 12px;
   }
 </style>

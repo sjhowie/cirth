@@ -10,6 +10,7 @@ import { layout } from "./layout.svelte";
 import { reportError } from "./notifications.svelte";
 import { settings, updateSettings } from "./settings.svelte";
 import { tabsStore } from "./tabs.svelte";
+import { checkForUpdate } from "./updater.svelte";
 
 function withView(fn: (v: EditorView) => unknown): () => void {
   return () => {
@@ -22,6 +23,8 @@ function withView(fn: (v: EditorView) => unknown): () => void {
 
 export function registerAppCommands(): void {
   setCommandErrorHandler(reportError);
+
+  registerCommand({ id: "help.checkForUpdates", label: "Check for Updates…", category: "Help", run: () => checkForUpdate(true) });
 
   // File
   registerCommand({ id: "file.new", label: "New File", category: "File", keys: ["Mod-n"], run: () => void newTab() });

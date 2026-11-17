@@ -7,7 +7,7 @@
     <title>Tauri + SvelteKit + Typescript App</title>
     <!--
       First paint in the right theme, before app.css loads (Vite injects it late in dev) and before settings load.
-      Rust injects __SIMPLEEDITOR_THEME__ (the theme setting); the rule matches isDark() in settings.svelte.ts.
+      Rust injects __CIRTH_THEME__ (the theme setting); the rule matches isDark() in settings.svelte.ts.
     -->
     <style>
       html { background: #ffffff; }
@@ -15,7 +15,7 @@
     </style>
     <script>
       (function () {
-        var t = window.__SIMPLEEDITOR_THEME__;
+        var t = window.__CIRTH_THEME__;
         var dark = t === "dark" || (t !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
         document.documentElement.dataset.theme = dark ? "dark" : "light";
       })();

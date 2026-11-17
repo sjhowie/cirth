@@ -1,7 +1,7 @@
 // Real-app E2E runner: starts Vite, runs each scenario against the debug exe over CDP, always cleans up.
 // Usage: npm run e2e [-- <scenario-number-or-name-substring> ...]
 // SE_EXE=<path to exe>: test that exe instead of the debug exe, and do not start Vite (release builds bundle the frontend).
-//   e.g. $env:SE_EXE = "$env:LOCALAPPDATA\SimpleEditor\simple-editor.exe"; npm run e2e
+//   e.g. $env:SE_EXE = "$env:LOCALAPPDATA\Cirth\cirth.exe"; npm run e2e
 import { readdirSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';

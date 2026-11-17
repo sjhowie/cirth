@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "SimpleEditor",
-  "version": "0.1.0",
-  "identifier": "com.simpleeditor.app",
+  "productName": "Cirth",
+  "version": "../package.json",
+  "identifier": "io.github.sjhowie.cirth",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "SimpleEditor",
+        "title": "Cirth",
         "width": 1280,
         "height": 800,
         "create": false,
@@ -33,7 +33,7 @@
     "targets": ["nsis", "msi"],
     "publisher": "Steve Howie",
     "shortDescription": "A lightweight text editor",
-    "longDescription": "SimpleEditor is a fast, lightweight desktop text editor with syntax highlighting, markdown preview, project search and large-file support.",
+    "longDescription": "Cirth is a fast, lightweight desktop text editor with syntax highlighting, markdown preview, project search and large-file support.",
     "copyright": "Copyright (c) 2026 Steve Howie",
     "windows": {
       "nsis": {
@@ -52,5 +52,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": ["https://github.com/sjhowie/cirth/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

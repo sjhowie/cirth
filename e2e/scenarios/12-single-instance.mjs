@@ -21,7 +21,7 @@ export async function run(t) {
   write(join(dir, 'third.txt'), 'third\n');
   const f4 = write(join(dir, 'early.txt'), 'early\n');
   const env = { ...process.env };
-  delete env.SIMPLEEDITOR_MULTI_INSTANCE;
+  delete env.CIRTH_MULTI_INSTANCE;
 
   // First instance WITHOUT the opt-out env var, so the single-instance plugin is active.
   // A second launch fired right after it (window still loading) must be queued, not lost.

@@ -1,0 +1,46 @@
+# Builds and publishes a release when a vX.Y.Z tag is pushed (npm run release -- <bump> --push).
+# The release carries the signed NSIS and MSI installers plus latest.json, which the in-app updater reads from
+# https://github.com/sjhowie/cirth/releases/latest/download/latest.json.
+# Needs repository secrets TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD (from `tauri signer generate`).
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Cirth ${{ github.ref_name }}
+          releaseBody: See the commits since the previous release for what changed.
+          releaseDraft: false
+          prerelease: false
+          # Updater artifacts (signatures) only in CI, so local `npm run tauri build` needs no signing key.
+          args: --config src-tauri/tauri.updater.conf.json
+          updaterJsonPreferNsis: true

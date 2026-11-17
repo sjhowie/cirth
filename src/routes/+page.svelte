@@ -19,6 +19,7 @@
   import { reportError } from "$lib/notifications.svelte";
   import { initSettings, isDark, settings, themeState } from "$lib/settings.svelte";
   import { tabsStore } from "$lib/tabs.svelte";
+  import { startUpdater } from "$lib/updater.svelte";
   import { startWatching, syncWatchedPaths } from "$lib/watch.svelte";
   import { registerPaletteAndSearch } from "$lib/palette/register";
 
@@ -45,7 +46,7 @@
   // Window title.
   $effect(() => {
     const tab = tabsStore.active;
-    const title = tab ? `${tab.dirty ? "● " : ""}${tab.title} - SimpleEditor` : "SimpleEditor";
+    const title = tab ? `${tab.dirty ? "● " : ""}${tab.title} - Cirth` : "Cirth";
     document.title = title;
     if (isTauri()) {
       import("@tauri-apps/api/window")
@@ -59,6 +60,7 @@
     registerPaletteAndSearch();
     registerMarkdownPreview();
     const uninstallKeys = installKeyHandler();
+    const stopUpdater = startUpdater();
 
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     themeState.systemDark = media.matches;
@@ -102,6 +104,7 @@
 
     return () => {
       uninstallKeys();
+      stopUpdater();
       media.removeEventListener("change", onMedia);
       unlistenClose?.();
     };

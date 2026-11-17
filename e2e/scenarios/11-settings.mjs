@@ -1,4 +1,4 @@
-import { ui, write, join, readFileSync, existsSync, writeSettings, SETTINGS_FILE, waitFor, sleep } from '../lib.mjs';
+import { ui, write, join, readFileSync, existsSync, writeSettings, SETTINGS_FILE, ROOT, waitFor, sleep } from '../lib.mjs';
 import { writeFileSync } from 'node:fs';
 
 export const name = '11 settings';
@@ -46,7 +46,7 @@ export async function run(t) {
   await thr.blur();
 
   await waitFor(() => existsSync(SETTINGS_FILE) && read().largeFileThresholdMb === 25, { timeout: 4000, label: 'settings.json written' }).catch(() => {});
-  t.ok(existsSync(SETTINGS_FILE), 'settings.json exists in %APPDATA%\com.simpleeditor.app');
+  t.ok(existsSync(SETTINGS_FILE), 'settings.json exists in %APPDATA%\io.github.sjhowie.cirth');
   t.eq(read(), { theme: 'dark', fontFamily: 'Consolas, monospace', fontSize: 20, indent: '4', largeFileThresholdMb: 25, wordWrap: true }, 'settings.json holds exactly the chosen values');
   t.eq(readFileSync(SETTINGS_FILE).subarray(0, 1).toString(), '{', 'settings.json is plain JSON (no BOM)');
   await ui.closeSettings(page);
@@ -58,7 +58,7 @@ export async function run(t) {
   await waitFor(async () => (await theme(page)) === 'dark', { timeout: 4000, label: 'dark after relaunch' }).catch(() => {});
   t.eq(await theme(page), 'dark', 'theme persisted across relaunch');
   // The window opens on the theme's background and the page's first paint uses it (no white flash).
-  t.eq(await page.evaluate(() => window.__SIMPLEEDITOR_THEME__), 'dark', 'Rust injected the saved theme into the page before it loaded');
+  t.eq(await page.evaluate(() => window.__CIRTH_THEME__), 'dark', 'Rust injected the saved theme into the page before it loaded');
   t.eq(await cmFont(page), '20px', 'font size persisted across relaunch');
   t.ok(/Consolas/.test(await cmFamily(page)), 'font family persisted across relaunch');
   t.eq(await page.locator('.cm-content.cm-lineWrapping').count(), 1, 'word wrap persisted across relaunch');
@@ -66,6 +66,9 @@ export async function run(t) {
   await ui.openSettings(page);
   t.eq(await dlg(page).locator('input[type=number]').nth(1).inputValue(), '25', 'large-file threshold persisted in the panel');
   t.eq(await dlg(page).locator('select').nth(0).inputValue(), 'dark', 'panel shows the saved theme');
+  const version = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
+  t.eq(await dlg(page).locator('.version').innerText(), `Cirth ${version}`, 'settings panel shows the app version from package.json');
+  t.eq(await page.evaluate(() => window.__CIRTH_UPDATE_CHECK__), false, 'CIRTH_NO_UPDATE_CHECK=1 turns off background update checks');
 
   // ---- out-of-range font size is clamped before it is stored ----
   const size2 = dlg(page).locator('input[type=number]').nth(0);

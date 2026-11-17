@@ -77,7 +77,7 @@ decides what changed by re-reading (`list_dir` / `read_file`).
 
 ## Single instance and `app://open-paths`
 Desktop builds register `tauri-plugin-single-instance` as the first plugin. A second launch (Explorer
-"Open with SimpleEditor", or a command line) does not start a window: it hands its argv to the running
+"Open with Cirth", or a command line) does not start a window: it hands its argv to the running
 instance and exits.
 - Rust resolves the second process's arguments against *its* working directory and keeps only existing
   paths (`tree::startup_paths_from(args, base)`, the same function `get_startup_paths` uses with the
@@ -89,10 +89,10 @@ instance and exits.
   emitted directly. Each path is delivered exactly once.
 - Frontend (`openStartupPaths` in `src/lib/files.ts`) subscribes once and calls `openPaths(paths)`:
   folders become the explorer root, files become tabs, exactly as for startup paths.
-- Opt-out: environment variable `SIMPLEEDITOR_MULTI_INSTANCE=1` skips the plugin, so several
+- Opt-out: environment variable `CIRTH_MULTI_INSTANCE=1` skips the plugin, so several
   instances can run side by side. The E2E launcher sets it, except scenario `12-single-instance`.
-- Installers add an Explorer context-menu entry "Open with SimpleEditor" (files, folders, folder
-  background) that runs `simple-editor.exe "%1"` (`"%V"` for the background): NSIS per user under
+- Installers add an Explorer context-menu entry "Open with Cirth" (files, folders, folder
+  background) that runs `cirth.exe "%1"` (`"%V"` for the background): NSIS per user under
   `HKCU\Software\Classes`, MSI per machine under `HKLM\Software\Classes` (see `src-tauri/windows/`).
 
 ## Folder search / replace
@@ -136,12 +136,26 @@ instance and exits.
 `Settings` = `{ theme: "system"|"light"|"dark", fontFamily: string, fontSize: number,
 indent: "2"|"4"|"tab", largeFileThresholdMb: number, wordWrap: boolean }`
 Defaults: `system`, `"Cascadia Code, Consolas, Menlo, monospace"`, `14`, `"2"`, `10`, `false` (10 MB per `docs/decisions/big-file-spike.md`).
-Stored as `settings.json` in the Tauri app config dir.
+Stored as `settings.json` in the Tauri app config dir (`%APPDATA%\io.github.sjhowie.cirth` on Windows). On the first
+start after the rename from SimpleEditor, `migrate.rs` copies `settings.json` and the WebView2 Local Storage from the old
+`com.simpleeditor.app` folders, once, and leaves the old folders alone.
 
 **Startup theme (no white flash).** Rust creates the main window itself (`"create": false` in `tauri.conf.json`). It loads the
 settings first, builds the window hidden, sets the window and WebView2 background to the theme's editor color (`#282c34`
-dark, `#ffffff` light; "system" asks the OS), then shows it. An initialization script sets `window.__SIMPLEEDITOR_THEME__`
+dark, `#ffffff` light; "system" asks the OS), then shows it. An initialization script sets `window.__CIRTH_THEME__`
 to the `theme` setting before any page script runs. `app.html` uses it to set `data-theme` before first paint, and
 `settings.svelte.ts` uses it as the initial `settings.theme`. After a theme change the frontend calls
 `setBackgroundColor` on the webview window (capabilities `core:window:allow-set-background-color` and
 `core:webview:allow-set-webview-background-color`).
+
+## Updates
+
+No custom commands: the frontend (`updater.svelte.ts`) uses `tauri-plugin-updater` (`check`, `downloadAndInstall`) and
+`tauri-plugin-process` (`relaunch`), with capabilities `updater:default` and `process:allow-restart`.
+
+- Endpoint: `https://github.com/sjhowie/cirth/releases/latest/download/latest.json`, written by the release workflow
+  (`.github/workflows/release.yml`). Installers are verified against `plugins.updater.pubkey` in `tauri.conf.json`.
+- Windows installs run the NSIS installer in passive mode; it closes Cirth and reopens it.
+- Release builds check 5 s after startup and every 6 hours. Dev builds never check. The initialization script sets
+  `window.__CIRTH_UPDATE_CHECK__ = false` when the environment variable `CIRTH_NO_UPDATE_CHECK=1` is set (E2E sets it).
+- Background check failures are logged with `console.warn` only (offline is normal); Help → Check for Updates reports them.

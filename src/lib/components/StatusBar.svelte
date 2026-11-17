@@ -8,6 +8,7 @@
   import { layout } from "$lib/layout.svelte";
   import { settings } from "$lib/settings.svelte";
   import { tabsStore } from "$lib/tabs.svelte";
+  import { installUpdate, updater } from "$lib/updater.svelte";
   import Picker from "./Picker.svelte";
 
   type Which = "language" | "encoding" | "eol" | null;
@@ -45,6 +46,15 @@
   <div class="left">
     {#if chordHint.text}<span>{chordHint.text}</span>{/if}
     {#if tab?.deleted}<span class="warn">Deleted on disk (Save to recreate)</span>{/if}
+    {#if updater.phase === "downloading"}
+      <span class="badge">Downloading update{updater.progress === null ? "…" : ` ${Math.round(updater.progress * 100)}%`}</span>
+    {:else if updater.phase === "installing"}
+      <span class="badge">Installing update…</span>
+    {:else if updater.available}
+      <button class="item badge update" title="Install Cirth {updater.available} (you have {updater.version})" onclick={() => void installUpdate()}>
+        Update to {updater.available}
+      </button>
+    {/if}
   </div>
   {#if tab}
     <div class="right">
