@@ -2,9 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%sveltekit.assets%/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tauri + SvelteKit + Typescript App</title>
+    <title>Cirth</title>
+    <!-- No page icon (the window uses the exe's); this stops the webview requesting /favicon.ico and logging a 404. -->
+    <link rel="icon" href="data:," />
     <!--
       First paint in the right theme, before app.css loads (Vite injects it late in dev) and before settings load.
       Rust injects __CIRTH_THEME__ (the theme setting); the rule matches isDark() in settings.svelte.ts.
@@ -20,9 +21,9 @@
         document.documentElement.dataset.theme = dark ? "dark" : "light";
       })();
     </script>
-    %sveltekit.head%
   </head>
-  <body data-sveltekit-preload-data="hover">
-    <div style="display: contents">%sveltekit.body%</div>
+  <body>
+    <div id="app" style="display: contents"></div>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

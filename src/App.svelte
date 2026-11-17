@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { registerAppCommands } from "#lib/appCommands.js";
+  import AboutDialog from "#lib/components/AboutDialog.svelte";
+  import ChangelogDialog from "#lib/components/ChangelogDialog.svelte";
   import ChangedBanner from "#lib/components/ChangedBanner.svelte";
   import Editor from "#lib/components/Editor.svelte";
   import MenuBar from "#lib/components/MenuBar.svelte";
@@ -144,6 +146,8 @@
 {#each layout.overlays as Overlay, i (i)}
   <Overlay />
 {/each}
+<AboutDialog />
+<ChangelogDialog />
 
 <style>
   .app {

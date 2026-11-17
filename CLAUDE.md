@@ -2,7 +2,7 @@
 
 The app was called SimpleEditor until 0.2.0 (identifier `com.simpleeditor.app`); `src-tauri/src/migrate.rs` carries settings over once. The repo folder may still be named `SimpleEditor`, and the WebView2 localStorage keys keep their `simpleeditor.` prefix on purpose (renaming them would drop users' recent files).
 
-A lightweight desktop text editor: Tauri 2 (Rust) and SvelteKit (Svelte 5 runes, TypeScript) with CodeMirror 6. Windows is the only platform built and tested. Keep the code portable: no Windows-only APIs outside the installer files, and use `Mod` keybindings. [README.md](README.md) covers features, shortcuts and the file layout. This file covers how to work on the code.
+A lightweight desktop text editor: Tauri 2 (Rust) and Svelte 5 (runes, TypeScript) on Vite, with CodeMirror 6. There is no SvelteKit: `index.html` loads `src/main.ts`, which mounts `src/App.svelte`; `vite build` writes `dist/` for Tauri to bundle. `#lib/...` imports resolve through `package.json` `imports`. Windows is the only platform built and tested. Keep the code portable: no Windows-only APIs outside the installer files, and use `Mod` keybindings. [README.md](README.md) covers features, shortcuts and the file layout. This file covers how to work on the code.
 
 **Out of scope on purpose:** compiling, debugging, extensions and session restore. Don't add them unless asked.
 

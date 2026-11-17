@@ -1,7 +1,5 @@
 import { defineConfig } from "vite";
-import { sveltekit } from "@sveltejs/kit/vite";
-import adapter from "@sveltejs/adapter-static";
-import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
 // @ts-expect-error type error without @types/node package
@@ -19,17 +17,11 @@ function gitCommit() {
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  // SvelteKit 3 takes its config here (svelte.config.js is no longer read).
-  // Tauri has no Node.js server for SSR, so adapter-static with an index.html fallback runs the app as an SPA:
-  // https://svelte.dev/docs/kit/single-page-apps and https://v2.tauri.app/start/frontend/sveltekit/
-  plugins: [
-    sveltekit({
-      preprocess: vitePreprocess(),
-      adapter: adapter({ fallback: "index.html" }),
-      // Kit 3 polls for a new deployment hourly by default; the app ships inside the exe and updates through the Tauri updater.
-      version: { pollInterval: 0 },
-    }),
-  ],
+  // Plain Svelte single-page app: index.html loads src/main.ts; `vite build` writes dist/, which Tauri bundles.
+  // Svelte options (preprocess) are in svelte.config.js, which svelte-check also reads.
+  plugins: [svelte()],
+  // The bundle is read from inside the exe, not downloaded, so a ~600 kB main chunk (CodeMirror + markdown-it) is fine.
+  build: { chunkSizeWarningLimit: 1024 },
 
   // Build stamps read by src/lib/buildInfo.ts.
   define: {

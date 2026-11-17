@@ -1,8 +1,15 @@
 {
-  "extends": "$app/tsconfig",
-  "include": ["src", "test", "*"],
-  "exclude": ["src/service-worker"],
   "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["svelte", "vite/client"],
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "allowJs": true,
     "checkJs": true,
     "esModuleInterop": true,
@@ -10,9 +17,8 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "sourceMap": true,
-    "strict": true,
-    "moduleResolution": "bundler"
-  }
-  // SvelteKit 3 generates $app/tsconfig (paths, types, rootDirs). TypeScript does not merge include/exclude
-  // with the extended config, so they are repeated here. #lib is the package.json "imports" entry.
+    "strict": true
+  },
+  "include": ["src", "*"]
+  // #lib/* resolves through the "imports" field in package.json (Vite and TypeScript both read it).
 }

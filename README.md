@@ -81,6 +81,7 @@ npm run tauri build
 | Path | What |
 |---|---|
 | `src-tauri/src/` | Rust: file I/O and encodings (`files.rs`), formatters (`format_json.rs`, `format_xml.rs`), tree, folder search, watcher, settings, chunked uploads |
+| `index.html`, `src/main.ts`, `src/App.svelte` | Frontend entry: the page, the mount, and the app shell (Svelte on Vite, no SvelteKit) |
 | `src/lib/` | Frontend: tabs and editor host, command registry and keys, explorer, palette, search, Markdown preview |
 | `docs/ipc.md` | The Rust ⇄ frontend contract: every command and event. Change it in the same commit as any signature |
 | `docs/decisions/` | Why things are the way they are (for example the big-file measurements behind the 10 MB threshold) |

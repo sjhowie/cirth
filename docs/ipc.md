@@ -187,7 +187,7 @@ start after the rename from SimpleEditor, `migrate.rs` copies `settings.json` an
 **Startup theme (no white flash).** Rust creates the main window itself (`"create": false` in `tauri.conf.json`). It loads the
 settings first, builds the window hidden, sets the window and WebView2 background to the theme's editor color (`#282c34`
 dark, `#ffffff` light; "system" asks the OS), then shows it. An initialization script sets `window.__CIRTH_THEME__`
-to the `theme` setting before any page script runs. `app.html` uses it to set `data-theme` before first paint, and
+to the `theme` setting before any page script runs. `index.html` uses it to set `data-theme` before first paint, and
 `settings.svelte.ts` uses it as the initial `settings.theme`. After a theme change the frontend calls
 `setBackgroundColor` on the webview window (capabilities `core:window:allow-set-background-color` and
 `core:webview:allow-set-webview-background-color`).
