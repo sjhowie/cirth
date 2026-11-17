@@ -170,6 +170,15 @@ export async function commitRename(name: string): Promise<void> {
   await loadDir(parent);
 }
 
+/** Puts an item's full path on the clipboard. */
+export async function copyFullPath(path: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(path);
+  } catch (e) {
+    reportError(`Copy path of ${basename(path)}`, e);
+  }
+}
+
 export async function deleteEntry(path: string, isDir: boolean): Promise<void> {
   const answer = await showDialog({
     title: `Delete ${isDir ? "folder" : "file"}?`,

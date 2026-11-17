@@ -1,6 +1,6 @@
 <script lang="ts">
   import TreeNode from "./TreeNode.svelte";
-  import { cancelEdit, commitCreate, commitRename, entriesOf, explorer, isExpanded, toggleDir } from "$lib/explorer.svelte";
+  import { cancelEdit, commitCreate, commitRename, entriesOf, explorer, isExpanded, startRename, toggleDir } from "$lib/explorer.svelte";
   import { openPath } from "$lib/files";
   import type { DirEntry } from "$lib/ipc";
   import { samePath } from "$lib/paths";
@@ -29,8 +29,13 @@
     if (path) await openPath(path);
   }
 
-  function activate(entry: DirEntry): void {
+  function activate(e: MouseEvent, entry: DirEntry): void {
     explorer.selected = entry.path;
+    // Alt+click renames instead of opening or toggling.
+    if (e.altKey) {
+      startRename(entry.path);
+      return;
+    }
     if (entry.isDir) void toggleDir(entry.path);
     else void openPath(entry.path);
   }
@@ -60,7 +65,7 @@
       class="row item"
       class:selected={explorer.selected !== null && samePath(explorer.selected, entry.path)}
       style:padding-left="{8 + depth * 14}px"
-      onclick={() => activate(entry)}
+      onclick={(e) => activate(e, entry)}
       oncontextmenu={(e) => {
         e.preventDefault();
         e.stopPropagation();

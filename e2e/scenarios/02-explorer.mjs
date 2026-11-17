@@ -90,6 +90,28 @@ export async function run(t) {
   await waitFor(async () => (await ui.tabs(page)).some((x) => x.title === 'renamed.txt'), { label: 'open tab follows the rename' });
   t.ok(true, 'open tab retitled after rename');
 
+  // Alt+click renames (a file is not opened, a folder is not toggled); Escape cancels.
+  const tabsBefore = (await ui.tabs(page)).length;
+  await row(page, 'top.txt').click({ modifiers: ['Alt'] });
+  await input.waitFor({ timeout: 3000 }).catch(() => {});
+  t.eq(await input.count() ? await input.inputValue() : null, 'top.txt', 'Alt+click on a file starts rename');
+  await page.keyboard.press('Escape');
+  t.eq((await ui.tabs(page)).length, tabsBefore, 'Alt+click does not open the file');
+  await row(page, 'docs').click({ modifiers: ['Alt'] });
+  await input.waitFor({ timeout: 3000 }).catch(() => {});
+  t.eq(await input.count() ? await input.inputValue() : null, 'docs', 'Alt+click on a folder starts rename');
+  await page.keyboard.press('Escape');
+  t.eq(await row(page, 'readme.md').count(), 0, 'Alt+click does not expand the folder');
+
+  // Copy Full Path (clipboard stubbed in the page, so the test never touches the user's clipboard).
+  await page.evaluate(() => {
+    window.__copied = [];
+    navigator.clipboard.writeText = async (text) => void window.__copied.push(text);
+  });
+  await ctx(page, 'a.txt', 'Copy Full Path');
+  await ctx(page, 'deep', 'Copy Full Path');
+  t.eq(await page.evaluate(() => window.__copied), [join(root, 'src', 'a.txt'), join(root, 'src', 'deep')], 'Copy Full Path copies the full path of a file and a folder');
+
   // Delete -> recycle bin
   const victim = join(root, 'src', 'renamed.txt');
   write(victim, 'bye');

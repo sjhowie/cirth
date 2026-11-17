@@ -2,7 +2,7 @@
 
 A lightweight desktop text editor in the spirit of Sublime Text and Zed. It's built with Tauri 2 (Rust) and Svelte 5 + CodeMirror 6.
 
-- Tabs and a folder sidebar: create, rename and delete files, with file watching. The sidebar stays hidden until a folder is open.
+- Tabs and a folder sidebar: create, rename and delete files, copy an item's full path, with file watching. The sidebar stays hidden until a folder is open.
 - "Open with SimpleEditor" in the Windows Explorer menu for files, folders and folder backgrounds (on Windows 11 it's under "Show more options"). A second launch hands its files to the window that's already open.
 - Syntax highlighting for about 100 languages.
 - JSON and XML: format and minify, with errors shown at their line and column.
@@ -27,6 +27,7 @@ No compiling, debugging or extensions; that's on purpose.
 | Command palette / Go to file | `Ctrl+Shift+P` / `Ctrl+P` (type `:120` to jump to a line) |
 | Find / Replace in file | `Ctrl+F` / `Ctrl+H` |
 | Find in folder | `Ctrl+Shift+F` (Esc in the search box brings the tree back) |
+| Rename a sidebar item | `Alt`+click (or right-click → Rename) |
 | Box selection | `Alt`+drag, `Shift+Alt`+click, `Shift+Alt+Arrows` / `Home` / `End` / `PgUp` / `PgDn` |
 | Format document / Minify (JSON, XML) | `Shift+Alt+F` / `Ctrl+Alt+M` |
 | Markdown preview: toggle / side by side | `Ctrl+Shift+V` / `Ctrl+K V` |

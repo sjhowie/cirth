@@ -3,7 +3,7 @@
   import SearchBar from "./SearchBar.svelte";
   import SearchResults from "./SearchResults.svelte";
   import TreeNode from "./TreeNode.svelte";
-  import { deleteEntry, explorer, startCreate, startRename } from "$lib/explorer.svelte";
+  import { copyFullPath, deleteEntry, explorer, startCreate, startRename } from "$lib/explorer.svelte";
   import { openFolderDialog } from "$lib/files";
   import type { DirEntry } from "$lib/ipc";
   import { basename } from "$lib/paths";
@@ -19,6 +19,7 @@
       { label: "New Folder", action: () => startCreate(target, "dir") },
     ];
     if (entry) {
+      items.push({ label: "Copy Full Path", action: () => void copyFullPath(entry.path) });
       items.push({ label: "Rename", action: () => startRename(entry.path) });
       items.push({ label: "Delete", action: () => void deleteEntry(entry.path, entry.isDir) });
     }
