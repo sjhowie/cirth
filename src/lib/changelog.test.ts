@@ -80,7 +80,14 @@ describe("parseChangelog", () => {
   it("parses the real CHANGELOG.md", () => {
     const r = parseChangelog(realChangelog);
     const released = visibleReleases(r, false);
-    expect(released.slice(0, 2).map((x) => x.version)).toEqual(["0.2.1", "0.2.0"]);
+    // Not pinned to the newest versions: every release adds one at the top.
+    const cmp = (a: string, b: string): number => {
+      const [x, y] = [a, b].map((v) => v.split(".").map(Number));
+      return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+    };
+    const versions = released.map((x) => x.version ?? "");
+    expect(versions.every((v, i) => i === 0 || cmp(versions[i - 1], v) > 0)).toBe(true);
+    expect(released.map((x) => x.version)).toEqual(expect.arrayContaining(["0.2.1", "0.2.0"]));
     expect(released.every((x) => x.date !== null)).toBe(true);
     expect(r.find((x) => x.version === "0.2.0")?.sections.map((s) => s.label)).toEqual(["NEW", "FIXED"]);
   });
