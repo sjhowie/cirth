@@ -76,6 +76,10 @@ npm run tauri build
 - Folder search matches non-ASCII text only in UTF-8 and UTF-16 files.
 - Only built and tested on Windows 11. The code avoids Windows-only APIs, but macOS and Linux builds haven't been tried.
 
+## License
+
+[MIT](LICENSE).
+
 ## Possible enhancements
 
 - **Virtual space in box selection**, as in Visual Studio. Today, a box over a line shorter than its columns stops at that line's end, so typing lands at the end of the short line. With virtual space, typing would first pad short lines in the box with spaces up to the box's column, so the text lines up on every line. The box already remembers its virtual column (`boxField` in `src/lib/editor/columnSelect.ts`). The work is a transaction filter or input handler that pads before the edit, plus drawing the box past line ends, unit tests in `columnSelect.test.ts`, and an E2E check in `e2e/scenarios/13-column-edit.mjs`.

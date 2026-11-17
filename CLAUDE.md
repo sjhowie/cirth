@@ -52,4 +52,4 @@ A change is done when vitest, check, cargo test and clippy pass, plus E2E for an
 - **Files are CRLF** (`core.autocrlf=true`). Edit them with editor tools, not `sed` or heredocs.
 - **Svelte 5 runes.** Stores are classes with `$state` fields in `*.svelte.ts` files.
 - **Errors are explicit and logged.** On the frontend, use `reportError` / `notifyError`. In Rust, return `AppError` and call `log::error!`.
-- **Git:** work on `dev`. Move `main` forward only when Steve asks; it is always a fast-forward of `dev`. The remote is `origin`, Steve's private GitHub repo (`sjhowie/simple-editor`, reached as the `sjhowie` account). Push only when Steve asks.
+- **Git:** work on `dev`. Move `main` forward only when Steve asks; it is always a fast-forward of `dev`. The remote is `origin`, Steve's private GitHub repo (`sjhowie/cirth`, MIT-licensed; the app itself is still named SimpleEditor until the rename lands; reached as the `sjhowie` account). Push only when Steve asks.
