@@ -1,6 +1,12 @@
 # Changelog
 What changed in each Cirth release, newest first.
 
+## Unreleased
+### New
+- Added dragging text onto another tab: rest on the tab to open it, then drop the text into that document.
+### Fixed
+- Fixed dragging selected text in the editor doing nothing; dragging moves it, and holding `Ctrl` copies it.
+
 ## 0.3.1 - 2026-11-17
 ### Fixed
 - Fixed Format XML slowing to a crawl on a tag with tens of thousands of attributes.

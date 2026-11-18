@@ -9,6 +9,7 @@
 import { EditorSelection, EditorState, Text, type Extension, type TransactionSpec } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { buildExtensions, languageC, settingsEffects } from "./editor/config";
+import { tabDragExtension } from "./editor/tabDrag";
 import { isDocDirty } from "./dirty";
 import { isDark, settings } from "./settings.svelte";
 import { tabsStore, type Tab } from "./tabs.svelte";
@@ -86,8 +87,33 @@ export function refreshAllDirty(): void {
 export function makeTabState(doc: string, largeFile: boolean, lang: Extension): EditorState {
   return EditorState.create({
     doc,
-    extensions: buildExtensions({ largeFile, lang, settings, dark: isDark(), onUpdate: handleUpdate }),
+    extensions: [buildExtensions({ largeFile, lang, settings, dark: isDark(), onUpdate: handleUpdate }), tabDrag],
   });
+}
+
+const tabDrag = tabDragExtension({
+  activeTabId: () => tabsStore.activeId,
+  tabState: (id) => {
+    const tab = tabsStore.byId(id);
+    return tab ? getTabState(tab) : null;
+  },
+  deleteInTab: (id, from, to) => {
+    const tab = tabsStore.byId(id);
+    if (tab) dispatchToTab(tab, { changes: { from, to }, userEvent: "delete.drag" });
+  },
+});
+
+/**
+ * Shows tab `id` while something is dragged over its tab. CodeMirror keeps the drag on the view, not the
+ * state: the dragged range, and the mouse selection that started it (its document listeners outlive the
+ * drag). Both still point into the old document, so they are ended first; otherwise the drop deletes or
+ * selects the wrong range in the other tab. tabDragExtension does the cross-tab move instead.
+ */
+export function activateTabWhileDragging(id: number): void {
+  if (!view || tabsStore.activeId === id) return;
+  view.contentDOM.dispatchEvent(new DragEvent("dragend"));
+  view.contentDOM.ownerDocument.dispatchEvent(new MouseEvent("mouseup"));
+  activateTab(id);
 }
 
 function handleUpdate(u: ViewUpdate): void {

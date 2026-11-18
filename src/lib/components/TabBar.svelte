@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { activateTab } from "#lib/editorHost.svelte.js";
+  import { activateTab, activateTabWhileDragging } from "#lib/editorHost.svelte.js";
+  import { cancelTabHover, dragOverTab } from "#lib/editor/tabDrag.js";
   import { closeTab } from "#lib/files.js";
   import { tabsStore } from "#lib/tabs.svelte.js";
 
@@ -19,6 +20,15 @@
     }
   }
 
+  // Attached here rather than as an attribute: a drag handler on the tablist would make it an interactive element.
+  $effect(() => {
+    const onDragLeave = (e: DragEvent): void => {
+      if (!(e.relatedTarget instanceof Node && strip.contains(e.relatedTarget))) cancelTabHover();
+    };
+    strip.addEventListener("dragleave", onDragLeave);
+    return () => strip.removeEventListener("dragleave", onDragLeave);
+  });
+
   $effect(() => {
     const id = tabsStore.activeId;
     if (id === null) return;
@@ -36,6 +46,7 @@
       role="presentation"
       onmousedown={(e) => e.button === 1 && e.preventDefault()}
       onauxclick={(e) => onAux(e, tab.id)}
+      ondragover={() => dragOverTab(tab.id, activateTabWhileDragging)}
     >
       <button
         class="label"
