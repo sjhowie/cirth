@@ -54,6 +54,9 @@ strip = true
 [target.'cfg(windows)'.dependencies]
 # ReplaceFileW / MoveFileExW / GetFileInformationByHandle: saves keep ACLs, attributes, streams and hard links (files.rs).
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+# The paths of files dropped on the window (file_drop.rs). Keep in step with the versions wry uses (Cargo.lock).
+webview2-com = "0.39"
+windows-core = "0.62"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"

@@ -8,7 +8,7 @@ A lightweight desktop text editor in the spirit of Sublime Text and Zed. It's bu
 - JSON and XML: format and minify, with errors shown at their line and column.
 - Markdown: a live preview side by side or on its own, with synced scrolling, highlighted code blocks and local images.
 - Command palette, quick open, and go to line. Find/replace across a folder uses the search box under the Explorer header: results take the tree's place until you clear it.
-- Drag selected text to move it (hold Ctrl to copy), including onto another tab: rest on the tab and it opens.
+- Drag selected text to move it (hold Ctrl to copy), including onto another tab: rest on the tab and it opens. Drop files or folders on the window to open them.
 - Column (box) editing as in Visual Studio: Alt+drag, Shift+Alt+click, or Shift+Alt+arrow keys, then type on every line at once.
 - Encoding (UTF-8, UTF-8 with BOM, UTF-16 LE/BE, legacy code pages) and line endings (LF/CRLF) are detected, kept on save, and switchable from the status bar.
 - Files of 100 MB and more stay editable. At 10 MB and above (a setting), a file opens in **light mode**, with no highlighting, folding or wrapping.
@@ -53,7 +53,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
-`npm run e2e` runs the real-app suite (15 scenarios). It starts Vite and launches the debug exe (`cargo build` first), then drives WebView2 over its remote-debugging port with `playwright-core` and checks the bytes on disk. The app runs on a hidden Windows desktop, so you can keep working while it runs; set `$env:SE_E2E_VISIBLE = '1'` to watch it. Set `SE_EXE` to an installed exe to test a release build instead. The native Open and Save dialogs aren't covered. The suite never touches your real settings or WebView2 profile: each run points the app at a temp folder (`CIRTH_CONFIG_DIR`) and deletes it at the end. A scenario that can't run (for example the single-instance one while a Cirth is open) is reported as `SKIP`, not as passed.
+`npm run e2e` runs the real-app suite (16 scenarios). It starts Vite and launches the debug exe (`cargo build` first), then drives WebView2 over its remote-debugging port with `playwright-core` and checks the bytes on disk. The app runs on a hidden Windows desktop, so you can keep working while it runs; set `$env:SE_E2E_VISIBLE = '1'` to watch it. Set `SE_EXE` to an installed exe to test a release build instead. The native Open and Save dialogs aren't covered. The suite never touches your real settings or WebView2 profile: each run points the app at a temp folder (`CIRTH_CONFIG_DIR`) and deletes it at the end. A scenario that can't run (for example the single-instance one while a Cirth is open) is reported as `SKIP`, not as passed.
 
 ## Install
 

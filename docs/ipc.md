@@ -106,6 +106,13 @@ instance and exits.
   emitted directly. Each path is delivered exactly once.
 - Frontend (`openStartupPaths` in `src/lib/files.ts`) subscribes once and calls `openPaths(paths)`:
   folders become the explorer root, files become tabs, exactly as for startup paths.
+- Files and folders dropped on the window arrive the same way (Windows only). Tauri's drop handler is off
+  (`dragDropEnabled: false`; it swallows text drops), so `src/main.ts` cancels a file drop and posts the
+  dropped `File`s with `chrome.webview.postMessageWithAdditionalObjects`. The message is the string
+  `{"cmd":"cirth:open-dropped",…,"__TAURI_INVOKE_KEY__":""}`: wry's handler, which runs first, rejects
+  non-strings and WebView2 then calls no later handler; Tauri drops this one for its empty invoke key
+  (a stderr line, no page error). `src-tauri/src/file_drop.rs` reads each file's path from the message and
+  emits `app://open-paths` through `OpenPathsState`, without focusing the window.
 - Opt-out: environment variable `CIRTH_MULTI_INSTANCE=1` skips the plugin, so several
   instances can run side by side. The E2E launcher sets it, except scenario `12-single-instance`.
 - Installers add an Explorer context-menu entry "Open with Cirth" (files, folders, folder

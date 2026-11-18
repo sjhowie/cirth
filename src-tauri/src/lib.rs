@@ -1,4 +1,5 @@
 mod error;
+mod file_drop;
 mod files;
 mod format_json;
 mod format_xml;
@@ -24,6 +25,16 @@ struct OpenPaths {
     paths: Vec<String>,
 }
 
+/// Hands paths (a second launch's arguments, or files dropped on the window) to the frontend to open.
+/// Queued until the frontend has subscribed and called get_startup_paths; emitted directly after.
+fn send_open_paths(window: &tauri::WebviewWindow, paths: Vec<String>) {
+    if let Some(paths) = window.state::<tree::OpenPathsState>().deliver(paths)
+        && let Err(e) = window.emit(OPEN_PATHS_EVENT, OpenPaths { paths })
+    {
+        log::error!("emit {OPEN_PATHS_EVENT} failed: {e}");
+    }
+}
+
 /// A second launch handed us its argv: resolve against its cwd, forward to the main window, focus it.
 #[cfg(desktop)]
 fn on_second_instance(app: &tauri::AppHandle, argv: Vec<String>, cwd: String) {
@@ -32,12 +43,7 @@ fn on_second_instance(app: &tauri::AppHandle, argv: Vec<String>, cwd: String) {
         log::error!("single-instance: no main window to hand {} path(s) to", paths.len());
         return;
     };
-    // Queued until the frontend has subscribed and called get_startup_paths; emitted directly after.
-    if let Some(paths) = app.state::<tree::OpenPathsState>().deliver(paths)
-        && let Err(e) = window.emit(OPEN_PATHS_EVENT, OpenPaths { paths })
-    {
-        log::error!("single-instance: emit {OPEN_PATHS_EVENT} failed: {e}");
-    }
+    send_open_paths(&window, paths);
     if let Err(e) = window.unminimize() {
         log::error!("single-instance: unminimize failed: {e}");
     }
@@ -76,6 +82,7 @@ fn create_main_window(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Er
         },
     };
     window.set_background_color(Some(if dark { BG_DARK } else { BG_LIGHT }))?;
+    file_drop::open_dropped_files(&window)?;
     window.show()?;
     Ok(())
 }
