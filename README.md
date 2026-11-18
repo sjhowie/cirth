@@ -92,7 +92,7 @@ npm run tauri build
 - Box selection can't extend past the end of a short line (no virtual space; see Possible enhancements). Copy Line Up/Down have no shortcut because Shift+Alt+Up/Down select the box; they're in the command palette.
 - UTF-16 files without a BOM aren't detected, and UTF-16 is always saved with a BOM.
 - Folder search matches non-ASCII text only in UTF-8 and UTF-16 files.
-- Only built and tested on Windows 11. The code avoids Windows-only APIs, but macOS and Linux builds haven't been tried.
+- Released and tested on Windows 11 only. CI (`.github/workflows/ci.yml`) builds Linux (AppImage, .deb) and macOS (.dmg) on every push to `dev` and runs the unit tests there, with the bundles as run artifacts; they aren't released, signed or covered by E2E.
 
 ## License
 
