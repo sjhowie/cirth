@@ -89,13 +89,15 @@ mod tests {
     fn reports_changes_in_watched_folder() {
         let d = tempfile::tempdir().unwrap();
         let root = dunce::canonicalize(d.path()).unwrap();
+        // `sub` exists before watching starts. On Linux, inotify watches a folder created later only after its create
+        // event arrives, so a file written into it at once can be missed; the folder's own event still refreshes the tree.
+        std::fs::create_dir_all(root.join("sub")).unwrap();
         let (tx, rx) = mpsc::channel();
         let _w = build_watcher(&[root.to_string_lossy().into_owned()], move |p| {
             let _ = tx.send(p);
         })
         .unwrap();
         std::thread::sleep(Duration::from_millis(300));
-        std::fs::create_dir_all(root.join("sub")).unwrap();
         std::fs::write(root.join("sub").join("f.txt"), b"hi").unwrap();
         let mut all: Vec<String> = Vec::new();
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
