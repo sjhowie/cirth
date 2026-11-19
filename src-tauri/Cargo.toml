@@ -1,6 +1,6 @@
 [package]
 name = "cirth"
-version = "0.3.1"
+version = "0.3.2"
 description = "Cirth - a lightweight text editor"
 authors = ["Steve Howie"]
 license = "MIT"

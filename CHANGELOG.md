@@ -1,7 +1,7 @@
 # Changelog
 What changed in each Cirth release, newest first.
 
-## Unreleased
+## 0.3.2 - 2026-11-19
 ### New
 - Added dragging text onto another tab: rest on the tab to open it, then drop the text into that document.
 - Added opening files and folders by dropping them on the window.
